@@ -1,3 +1,4 @@
+use crate::protocol::serialize_int;
 pub mod protocol;
 
 
@@ -6,13 +7,13 @@ trait Packet {
 }
 
 struct PacketA {
-    x: u32,
-    y: u32,
-    z: u32
+    x: i32,
+    y: i32,
+    z: i32
 }
 
 impl PacketA {
-    fn new(x: u32, y: u32, z: u32) -> PacketA {
+    fn new(x: i32, y: i32, z: i32) -> PacketA {
         return PacketA { x, y, z };
     }
 }
@@ -20,9 +21,9 @@ impl PacketA {
 impl Packet for PacketA {
     fn Serialise(&mut self, stream: &mut impl protocol::streams::Stream) -> bool {
 
-        serialise_int!(stream, self.x, 0 as u32, u32::max_value());
-        serialise_int!(stream, self.y, 0 as u32, u32::max_value());
-        serialise_int!(stream, self.z, 0 as u32, u32::max_value());
+        serialize_int(stream, &mut self.x, 0, i32::max_value());
+        serialize_int(stream, &mut self.y, 0, i32::max_value());
+        serialize_int(stream, &mut self.z, 0, i32::max_value());
 
         return true;
     }
@@ -44,10 +45,10 @@ impl PacketB {
 impl Packet for PacketB {
     fn Serialise(&mut self, stream: &mut impl protocol::streams::Stream) -> bool {
         // * Comparison useless because unsigned int, change later.
-        serialise_int!(stream, self.num_items, 0, 300000);
+        serialize_int(stream, &mut (self.num_items as i32), 0, 300000);
         for i in 1..self.items.len() {
             println!("Serialising: {:?}", self.items[i]);
-            serialise_int!(stream, self.items[i], 0, 20);
+            serialize_int(stream, &mut (self.items[i] as i32), 0, 20);
         }
         return true;
     }
@@ -74,19 +75,6 @@ const MAX_PACKET_SIZE: usize = 100;
 
 fn main() {
     let factory = protocol::packet::PacketFactory::new(1);
-    let packet = factory.create_packet(1);
-
-    let mut read_buffer: [u8; MAX_PACKET_SIZE];
-
-    /*
-        w bevy:
-
-        
-
-
-    */
-
-
 
     // let mut w_stream_1 = streams::WriteStream::new(&mut buffer);
 

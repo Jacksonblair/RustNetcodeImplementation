@@ -1,6 +1,3 @@
-use std::sync::Arc;
-
-
 pub struct BitWriter<'a> {
     buffer: &'a mut Vec<u32>,
     scratch: u64,
@@ -12,19 +9,6 @@ pub struct BitWriter<'a> {
 }
 
 impl BitWriter<'_> {
-
-    /*
-        *** Packet size is derived from another object...
-
-        packet: Packet = PacketFactory::createPacket(packetType)
-        writeBuffer = uint8[maxPacketSize]
-
-        WritePacket(packetInfo, &packet, writeBuffer, maxPacketSize)
-
-            fn: Write Packet
-                let stream: WriteStream(buffer, bufferSize)
-    */
-
     pub fn new(buffer: &mut Vec<u32>, buffer_size: u32) -> BitWriter {
         assert!(buffer_size % 4 == 0, "bytes must be a multiple of 4");
         return BitWriter {
@@ -96,6 +80,7 @@ impl BitWriter<'_> {
     }
 
     pub fn get_bytes_written(&mut self) -> u32 {
+        // Add the seven and divide to round up.
         return (self.bits_written + 7) / 8;
     }
 }
@@ -112,7 +97,7 @@ pub struct BitReader<'a> {
 impl BitReader<'_> {
 
     pub fn new(buffer: &mut Vec<u32>, bytes: u32) -> BitReader {
-        assert!(bytes % 4 == 0, "bytes must be a multiple of 4");
+        assert!(buffer.len() % 4 == 0, "bytes must be a multiple of 4");
         return BitReader {
             scratch: 0,
             scratch_bits: 0,
@@ -122,7 +107,7 @@ impl BitReader<'_> {
         }
     }
 
-    pub fn would_overflow(&self, bits: u32) -> bool {
+    pub fn would_read_past_end(&self, bits: u32) -> bool {
         // Returns whether or not reading 'bits' bits would overflow the available bits to read
         return self.num_bits_read + bits > self.num_bits;
     }
@@ -137,7 +122,7 @@ impl BitReader<'_> {
         self.num_bits_read += bits;
 
         // Check scratch_bits is in a valid range for a 64 bit number
-        assert!(self.scratch_bits >= 0 && self.scratch_bits <= 64);
+        assert!(self.scratch_bits <= 64);
 
         // If there aren't enough bits in scratch to read off the specified amount..
         if self.scratch_bits < bits {
@@ -161,6 +146,15 @@ impl BitReader<'_> {
 
         output
     }
+
+    pub fn get_bits_read(&self) -> u32 {
+        self.num_bits_read
+    }
+
+    pub fn get_bits_remaining(&self) -> u32 {
+        return self.num_bits - self.num_bits_read;
+    }
+
 }
 
 
@@ -171,7 +165,8 @@ fn test_bitpacker()
 
     // Hypothetical local buffer
     let mut buffer: Vec<u32> = vec![0; buffer_size as usize];
-    let mut bits_written: u32 = 0;
+    let bits_written: u32;
+    let bytes_written: u32;
 
     {
         let mut writer = BitWriter::new(&mut buffer, buffer_size);
@@ -191,14 +186,37 @@ fn test_bitpacker()
         writer.flush();
 
         bits_written = 1 + 1 + 8 + 8 + 10 + 16 + 32; // 76
+        bytes_written = writer.get_bytes_written();
 
-        assert_eq!(10, writer.get_bytes_written());
+        assert_eq!(10, bytes_written);
         assert_eq!(bits_written, writer.get_bits_written());
         // check( writer.GetTotalBytes() == BufferSize );
         // check( writer.GetBitsAvailable() == BufferSize * 8 - bitsWritten );
     }
 
-    let mut reader = BitReader::new(&mut buffer, bits_written);
+    let mut reader = BitReader::new(&mut buffer, bytes_written);
 
+    assert_eq!(reader.get_bits_read(), 0);
+    assert_eq!(reader.get_bits_remaining(), bytes_written * 8);
+
+    let a = reader.read_bits(1);
+    let b = reader.read_bits(1);
+    let c = reader.read_bits(8);
+    let d = reader.read_bits(8);
+    let e = reader.read_bits(10);
+    let f = reader.read_bits(16);
+    let g = reader.read_bits(32);
+
+    assert_eq!(a, 0);
+    assert_eq!(b, 1);
+    assert_eq!(c, 10);
+    assert_eq!(d, 255);
+    assert_eq!(e, 1000);
+    assert_eq!(f, 50000);
+    assert_eq!(g, 9999999);
+
+    assert_eq!(reader.get_bits_read(), bits_written);
+    // Check that the bits remaining is equal to the padding remaining in the bytes written
+    assert_eq!(reader.get_bits_remaining(), bytes_written * 8 - bits_written);
 
 }
