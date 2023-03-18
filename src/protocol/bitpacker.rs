@@ -22,6 +22,16 @@ impl BitWriter<'_> {
         }
     }
 
+    // Align buffer to next byte
+    pub fn write_align(&mut self) -> bool {
+        let remainder_bits = self.bits_written % 8;
+        if remainder_bits != 0 {
+            self.write_bits(0, 8 - remainder_bits);
+            return (self.bits_written % 8) == 0;
+        }
+        return true
+    }
+
     // Flush remaining bits in scratch into buffer
     pub fn flush(&mut self) {
         if self.scratch_bits != 0 {
@@ -75,6 +85,76 @@ impl BitWriter<'_> {
         self.bits_written += num_bits;
     }
 
+    pub fn write_bytes(&mut self, bytes: &mut [u8], num_bytes: u32) -> bool {
+
+        assert!(self.get_align_bits() == 0);
+        assert!(self.bits_written + num_bytes * 8 <= self.num_bits);
+        assert!(
+            (self.bits_written % 32) == 0 ||
+            (self.bits_written % 32) == 8 ||
+            (self.bits_written % 32) == 16 ||
+            (self.bits_written % 32) == 24
+        );
+
+        // -- Writing leading word --
+
+        // Number of bytes to fill word
+        let mut head_bytes: u32 = (4 - (self.bits_written % 32) / 8) % 4;
+
+        // println!("HEAD BYTES {:?}", head_bytes);
+        // println!("{:#034b}", self.scratch);
+        // println!(".-----.");
+
+        if head_bytes > num_bytes {
+            head_bytes = num_bytes;
+        }
+        // HERE
+        for i in 0..head_bytes {
+            self.write_bits(bytes[i as usize] as u32, 8);   
+        }
+
+        // println!("WROTE HEAD: {:#034b}", self.buffer[(self.word_index - 1) as usize]);
+
+        if head_bytes == num_bytes {
+            return true;
+        }
+
+        self.flush();
+        assert!(self.get_align_bits() == 0);
+
+        // -- Writing in words at a time --
+
+        let num_words: u32 = (num_bytes - head_bytes) / 4;
+        if num_words > 0 {
+            assert!((self.bits_written % 32) == 0);
+            unsafe {
+                // COPY ALL THE WORDS at once into buffer.
+                let dest_ptr = self.buffer.as_mut_ptr().add(self.word_index as usize);
+                let src_ptr = bytes.as_ptr().add(head_bytes as usize) as *const u32;
+                std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, (num_words * 4) as usize);
+            }
+            self.bits_written += num_words * 32;
+            self.word_index += num_words;
+            self.scratch = 0;
+        }
+
+        assert!(self.get_align_bits() == 0);
+
+        // -- Writing tailing word --
+
+        let tail_bytes_start = head_bytes + num_words * 4;
+        let tail_bytes = num_bytes - tail_bytes_start;
+        assert!(tail_bytes < 4);
+        for i in 0..tail_bytes {
+            self.write_bits(bytes[(tail_bytes_start + i) as usize] as u32, 8);
+        }
+
+        assert!(self.get_align_bits() == 0);
+        assert!(head_bytes + num_words * 4 + tail_bytes == num_bytes);
+
+        return true
+    }
+
     pub fn get_bits_written(&mut self) -> u32 {
         return self.bits_written;
     }
@@ -82,6 +162,10 @@ impl BitWriter<'_> {
     pub fn get_bytes_written(&mut self) -> u32 {
         // Add the seven and divide to round up.
         return (self.bits_written + 7) / 8;
+    }
+
+    pub fn get_align_bits(&self) -> u32 {
+        return ( 8 - ( self.bits_written % 8 ) ) % 8;
     }
 }
 
@@ -110,6 +194,24 @@ impl BitReader<'_> {
     pub fn would_read_past_end(&self, bits: u32) -> bool {
         // Returns whether or not reading 'bits' bits would overflow the available bits to read
         return self.num_bits_read + bits > self.num_bits;
+    }
+
+    // Align self.bits_read to the nearest byte
+    pub fn read_align(&mut self) -> bool {
+        let remainder_bits = self.num_bits_read % 8;
+
+        if remainder_bits != 0 {
+            let val = self.read_bits(8 - remainder_bits);
+
+            if (self.num_bits_read % 8) != 0 {
+                return false
+            }
+            if val != 0 {
+                return false;
+            }
+        }
+
+        return true
     }
 
     pub fn read_bits(&mut self, bits: u32) -> u32 {
@@ -147,6 +249,99 @@ impl BitReader<'_> {
         output
     }
 
+    pub fn read_bytes(&mut self, bytes: &mut [u8], num_bytes: u32) {
+
+        println!("reading bytes: {:?} {:?}", num_bytes, bytes);
+
+        // Check we're aligned to byte
+        assert!(self.get_align_bits() == 0);
+
+        // Check we have enough bits in buffer to actually read out num_bytes
+        assert!( self.num_bits_read + num_bytes * 8 <= self.num_bits );
+
+        // Double check we're byte aligned
+        assert!(
+            (self.num_bits_read % 32) == 0 ||
+            (self.num_bits_read % 32) == 8 ||
+            (self.num_bits_read % 32) == 16 ||
+            (self.num_bits_read % 32) == 24
+        );
+
+        // How many bytes avail in current word
+        let mut head_bytes = (4 - ( self.num_bits_read % 32 ) / 8) % 4;
+
+        // -- Read head --
+
+        if head_bytes > num_bytes {
+            head_bytes = num_bytes;
+        }
+        for n in 0..head_bytes {
+            bytes[n as usize] = self.read_bits(8) as u8;
+        }
+        if head_bytes == num_bytes {
+            return;
+        }
+
+        assert!(self.get_align_bits() == 0);
+
+        let num_words = (num_bytes - head_bytes) / 4;
+
+        if num_words > 0 {
+            println!("READING WORDS");
+
+            assert!((self.num_bits_read % 32) == 0);
+            unsafe {
+                let src_ptr = self.buffer.as_ptr().add(self.word_index as usize);
+                let dest_ptr = bytes.as_ptr().add(head_bytes as usize) as *mut u32;
+                std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, (num_words * 4) as usize);
+            }
+
+            self.num_bits_read += num_words * 32;
+            self.word_index += num_words;
+            self.scratch_bits = 0;
+        }
+
+        // do tails tuff
+/*
+            assert( GetAlignBits() == 0 );
+            assert( m_bitsRead + bytes * 8 <= m_numBits );
+            assert( ( m_bitsRead % 32 ) == 0 || ( m_bitsRead % 32 ) == 8 || ( m_bitsRead % 32 ) == 16 || ( m_bitsRead % 32 ) == 24 );
+
+            int headBytes = ( 4 - ( m_bitsRead % 32 ) / 8 ) % 4;
+            if ( headBytes > bytes )
+                headBytes = bytes;
+            for ( int i = 0; i < headBytes; ++i )
+                data[i] = (uint8_t) ReadBits( 8 );
+            if ( headBytes == bytes )
+                return;
+
+            assert( GetAlignBits() == 0 );
+
+            int numWords = ( bytes - headBytes ) / 4;
+            if ( numWords > 0 )
+            {
+                assert( ( m_bitsRead % 32 ) == 0 );
+                memcpy( data + headBytes, &m_data[m_wordIndex], numWords * 4 );
+                m_bitsRead += numWords * 32;
+                m_wordIndex += numWords;
+                m_scratchBits = 0;
+            }
+
+            assert( GetAlignBits() == 0 );
+
+            int tailStart = headBytes + numWords * 4;
+            int tailBytes = bytes - tailStart;
+            assert( tailBytes >= 0 && tailBytes < 4 );
+            for ( int i = 0; i < tailBytes; ++i )
+                data[tailStart+i] = (uint8_t) ReadBits( 8 );
+
+            assert( GetAlignBits() == 0 );
+
+            assert( headBytes + numWords * 4 + tailBytes == bytes );
+ */
+
+    }
+
     pub fn get_bits_read(&self) -> u32 {
         self.num_bits_read
     }
@@ -155,6 +350,9 @@ impl BitReader<'_> {
         return self.num_bits - self.num_bits_read;
     }
 
+    pub fn get_align_bits(&self) -> u32 {
+        return ( 8 - ( self.num_bits_read % 8 ) ) % 8;
+    }
 }
 
 
@@ -163,7 +361,6 @@ fn test_bitpacker()
 {
     let buffer_size: u32 = 256;
 
-    // Hypothetical local buffer
     let mut buffer: Vec<u32> = vec![0; buffer_size as usize];
     let bits_written: u32;
     let bytes_written: u32;
@@ -194,29 +391,32 @@ fn test_bitpacker()
         // check( writer.GetBitsAvailable() == BufferSize * 8 - bitsWritten );
     }
 
-    let mut reader = BitReader::new(&mut buffer, bytes_written);
+    {
+        let mut reader = BitReader::new(&mut buffer, bytes_written);
+    
+        assert_eq!(reader.get_bits_read(), 0);
+        assert_eq!(reader.get_bits_remaining(), bytes_written * 8);
+    
+        let a = reader.read_bits(1);
+        let b = reader.read_bits(1);
+        let c = reader.read_bits(8);
+        let d = reader.read_bits(8);
+        let e = reader.read_bits(10);
+        let f = reader.read_bits(16);
+        let g = reader.read_bits(32);
+    
+        assert_eq!(a, 0);
+        assert_eq!(b, 1);
+        assert_eq!(c, 10);
+        assert_eq!(d, 255);
+        assert_eq!(e, 1000);
+        assert_eq!(f, 50000);
+        assert_eq!(g, 9999999);
+    
+        assert_eq!(reader.get_bits_read(), bits_written);
+        // Check that the bits remaining is equal to the padding remaining in the bytes written
+        assert_eq!(reader.get_bits_remaining(), bytes_written * 8 - bits_written);
+    }
 
-    assert_eq!(reader.get_bits_read(), 0);
-    assert_eq!(reader.get_bits_remaining(), bytes_written * 8);
-
-    let a = reader.read_bits(1);
-    let b = reader.read_bits(1);
-    let c = reader.read_bits(8);
-    let d = reader.read_bits(8);
-    let e = reader.read_bits(10);
-    let f = reader.read_bits(16);
-    let g = reader.read_bits(32);
-
-    assert_eq!(a, 0);
-    assert_eq!(b, 1);
-    assert_eq!(c, 10);
-    assert_eq!(d, 255);
-    assert_eq!(e, 1000);
-    assert_eq!(f, 50000);
-    assert_eq!(g, 9999999);
-
-    assert_eq!(reader.get_bits_read(), bits_written);
-    // Check that the bits remaining is equal to the padding remaining in the bytes written
-    assert_eq!(reader.get_bits_remaining(), bytes_written * 8 - bits_written);
 
 }

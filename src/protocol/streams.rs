@@ -6,7 +6,8 @@ pub trait Stream {
     fn is_writing(&self) -> bool;
     fn serialise_int(&mut self, value: &mut i32, min: i32, max: i32) -> bool;
     fn serialize_bits(&mut self, value: &mut u32, bits: u32) -> bool;
-
+    fn serialize_align(&mut self) -> bool;
+    fn serialize_bytes(&mut self, bytes: &mut [u8], num_bytes: u32) -> bool;
 }
 
 pub struct WriteStream<'a> {
@@ -49,6 +50,19 @@ impl <'a>Stream for WriteStream<'a> {
         return true;
     }
 
+    fn serialize_bytes(&mut self, bytes: &mut [u8], num_bytes: u32) -> bool {
+
+        assert!(num_bytes > 0);
+        if !self.serialize_align() {
+            return false;
+        }
+
+        return self.writer.write_bytes(bytes, num_bytes);
+    }
+
+    fn serialize_align(&mut self) -> bool {
+        return self.writer.write_align();
+    }
 
 }
 
@@ -92,6 +106,24 @@ impl <'a>Stream for ReadStream<'a> {
         }
         *value = self.reader.read_bits(bits);
         return true
+    }
+
+    fn serialize_bytes(&mut self, bytes: &mut [u8], num_bytes: u32) -> bool {
+
+        assert!(self.serialize_align());
+
+        if self.reader.would_read_past_end(num_bytes * 8) {
+            // Throw some overflow error?
+            return false;
+        }
+
+        self.reader.read_bytes(bytes, num_bytes);
+        self.reader.num_bits_read += num_bytes * 8;
+        true
+    }
+
+    fn serialize_align(&mut self) -> bool {
+        return self.reader.read_align();
     }
 }
 

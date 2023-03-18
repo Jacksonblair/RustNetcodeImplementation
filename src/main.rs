@@ -1,6 +1,5 @@
-use crate::protocol::serialize_int;
+use crate::protocol::serialize_int_macro;
 pub mod protocol;
-
 
 trait Packet {
     fn Serialise(&mut self, stream: &mut impl protocol::streams::Stream) -> bool;
@@ -21,9 +20,9 @@ impl PacketA {
 impl Packet for PacketA {
     fn Serialise(&mut self, stream: &mut impl protocol::streams::Stream) -> bool {
 
-        serialize_int(stream, &mut self.x, 0, i32::max_value());
-        serialize_int(stream, &mut self.y, 0, i32::max_value());
-        serialize_int(stream, &mut self.z, 0, i32::max_value());
+        serialize_int_macro(stream, &mut self.x, 0, i32::max_value());
+        serialize_int_macro(stream, &mut self.y, 0, i32::max_value());
+        serialize_int_macro(stream, &mut self.z, 0, i32::max_value());
 
         return true;
     }
@@ -45,10 +44,10 @@ impl PacketB {
 impl Packet for PacketB {
     fn Serialise(&mut self, stream: &mut impl protocol::streams::Stream) -> bool {
         // * Comparison useless because unsigned int, change later.
-        serialize_int(stream, &mut (self.num_items as i32), 0, 300000);
+        serialize_int_macro(stream, &mut (self.num_items as i32), 0, 300000);
         for i in 1..self.items.len() {
             println!("Serialising: {:?}", self.items[i]);
-            serialize_int(stream, &mut (self.items[i] as i32), 0, 20);
+            serialize_int_macro(stream, &mut (self.items[i] as i32), 0, 20);
         }
         return true;
     }
@@ -73,8 +72,16 @@ impl Packet for PacketB {
 
 const MAX_PACKET_SIZE: usize = 100;
 
+fn some_fn() -> bool {
+    println!("GOT HERE");
+    assert_expr!(1 ==2);
+    println!("GOT HERE 2");
+    return true;
+}
+
 fn main() {
-    let factory = protocol::packet::PacketFactory::new(1);
+
+    some_fn();
 
     // let mut w_stream_1 = streams::WriteStream::new(&mut buffer);
 

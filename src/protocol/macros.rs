@@ -1,3 +1,15 @@
+use super::streams::Stream;
+
+/* c++ style assert */
+#[macro_export]
+macro_rules! assert_expr {
+    ($cond:expr) => {
+        if ($cond) == false {
+            return false;
+        }
+    };
+}
+
 /*
     Macro for calculating number of bits required for a 32 bit value.
 */
@@ -20,7 +32,6 @@ macro_rules! bits_required {
         }
     };
 }
-
 
 /*
     Macro for calculating number of bits required for a 32 bit value.
@@ -47,6 +58,8 @@ macro_rules! bits_required {
         } while (0)
 
         */
+
+
 // #[macro_export]
 // macro_rules! serialise_int {
 //     ($stream:expr,$value:expr,$min:expr,$max:expr) => {
