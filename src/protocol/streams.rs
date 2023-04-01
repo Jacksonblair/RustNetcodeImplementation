@@ -37,8 +37,6 @@ impl <'a>Stream for WriteStream<'a> {
     }
 
     fn serialise_int(&mut self, value: &mut i32, min: i32, max: i32) -> bool {
-
-
         /*
             assert( min < max );
             assert( value >= min );
@@ -111,6 +109,7 @@ impl <'a>Stream for ReadStream<'a> {
     fn serialize_bytes(&mut self, bytes: &mut [u8], num_bytes: u32) -> bool {
 
         assert!(self.serialize_align());
+        assert!(bytes.len() == num_bytes as usize);
 
         if self.reader.would_read_past_end(num_bytes * 8) {
             // Throw some overflow error?

@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 num-traits = "0.2.15"
 vector3d = "0.2.1"
+rand = "0.8"

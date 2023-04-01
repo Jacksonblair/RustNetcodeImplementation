@@ -1,3 +1,5 @@
+use protocol::{streams::Stream, packet::test_packet};
+
 use crate::protocol::serialize_int_macro;
 pub mod protocol;
 
@@ -72,16 +74,23 @@ impl Packet for PacketB {
 
 const MAX_PACKET_SIZE: usize = 100;
 
-fn some_fn() -> bool {
-    println!("GOT HERE");
-    assert_expr!(1 ==2);
-    println!("GOT HERE 2");
-    return true;
-}
+// fn write_scene_a(stream: &mut dyn Stream, )
+/* 
+    Packet Serialize
+        serialize_some_thing(stream, scene)
+
+    Packet SerializeInternal
+        write_scene_b(stream, scene)
+
+
+ */
+
 
 fn main() {
 
-    some_fn();
+    test_packet();
+
+    // some_fn();
 
     // let mut w_stream_1 = streams::WriteStream::new(&mut buffer);
 
