@@ -11,6 +11,8 @@ pub mod streams;
 pub mod macros;
 pub mod bitpacker;
 
+const MAX_OBJECTS: u32 = 1024;
+
 pub fn serialize_float_internal(stream: &mut dyn Stream, value: &mut f32) -> bool {
 
     // Convert float to an integer representation
@@ -177,6 +179,182 @@ pub fn serialize_string_macro(stream: &mut dyn Stream, string: &mut String) -> b
 pub fn serialize_bytes_macro(stream: &mut dyn Stream, bytes: &mut [u8], num_bytes: u32) -> bool {
     return serialize_bytes_internal(stream, bytes, num_bytes)
 }
+
+pub fn serialize_bits_macro(stream: &mut dyn Stream, value: &mut u32, bits: u32) -> bool {
+    assert!(bits > 0);
+    assert!(bits <= 32);
+    let mut u32_val: u32 = 0;
+    if stream.is_writing() {
+        // TODO: When this is a macro, cast value to a u32?
+    }
+    if !stream.serialize_bits(&mut u32_val, bits) {
+        return false
+    }
+    if stream.is_reading() {
+        *value = u32_val;
+    }
+    true
+}
+
+pub fn serialize_bool_macro(stream: &mut dyn Stream, value: &mut bool) -> bool {
+    let mut uint32_bool_value = 0;
+    if stream.is_writing() {
+        if *value {
+            uint32_bool_value = 1;
+        } else {
+            uint32_bool_value = 0;
+        }
+    }
+    serialize_bits_macro(stream, &mut uint32_bool_value, 1);
+    if stream.is_reading() {
+        if uint32_bool_value == 1 {
+            *value = true;
+        } else {
+            *value = false;
+        }
+    }
+    true
+}
+
+pub fn serialize_object_index_internal(stream: &mut dyn Stream, previous: &mut u32, current: &mut u32) -> bool {
+    let mut difference: i32 = 0;
+
+    /*
+        Explaining this:
+        - We're generally encoding the number of bits required to encode the index diff, and then the encoded index diff
+        - * If we're only serializing a index diff of 1, we dont need to encode the bits required, because it can only be one
+        - * If we serializing a diff that takes over 6 bits to encode (12 including the bits required), we just serialize enough bits to encode the maximum number of objects
+
+        Ex. Encoding a diff of 5 (say 12 to 17)
+        - we encode 3 bits (as the length), and then encode the diff.
+        - result: 011 101
+
+        Ex. Encoding a diff of 1 (say 500 to 501)
+        - result: 1
+    */
+
+    if stream.is_writing() {
+        assert!(*previous < *current);
+        difference = (*current - *previous) as i32;
+        assert!(difference > 0);
+    }
+
+    // +1 (1 bit)
+    let mut plus_one: bool = false;
+    if stream.is_writing() {
+        plus_one = difference == 1;
+    }
+    serialize_bool_macro(stream, &mut plus_one);
+    if plus_one {
+        if stream.is_reading() {
+            *current = *previous + 1;
+        }
+        *previous = *current;
+        return true;
+    }
+
+    // [+2, 5] -> [0,3] (2 bits)
+    let mut two_bits = false;
+    if stream.is_writing() {
+        two_bits = difference <= 5;
+    }
+    serialize_bool_macro(stream, &mut two_bits);
+    if two_bits {
+        serialize_int_macro(stream, &mut difference, 2, 5);
+        if stream.is_reading() {
+            *current = *previous + difference as u32;
+        }
+        *previous = *current;
+        return true;
+    }
+
+    // [6, 13] -> [0,7] (3 bits)
+    let mut three_bits = false;
+    if stream.is_writing() {
+        three_bits = difference <= 13;
+    }
+    serialize_bool_macro(stream, &mut three_bits);
+    if three_bits {
+        serialize_int_macro(stream, &mut difference, 6, 13);
+        if stream.is_reading() {
+            *current = *previous - (difference as u32);
+        }
+        *previous = *current;
+        return true;
+    }
+
+    // [14,29] -> [0,15] (4 bits)
+    let mut four_bits = false;
+    if stream.is_writing() {
+        four_bits = difference <= 29;
+    }
+    serialize_bool_macro(stream, &mut four_bits);
+    if four_bits {
+        serialize_int_macro(stream, &mut difference, 14, 29);
+        if stream.is_reading() {
+            *current = *previous + (difference as u32);
+        }
+        *previous = *current;
+        return true;
+    }
+
+    // [30,61] -> [0,31] (5 bits)
+    let mut five_bits = false;
+    if stream.is_writing() {
+        five_bits = difference <= 61;
+    }
+    serialize_bool_macro(stream, &mut five_bits);
+    if five_bits {
+        serialize_int_macro(stream, &mut difference, 30, 61);
+        if stream.is_reading() {
+            *current = *previous + (difference as u32);
+        }
+        *previous = *current;
+        return true;
+    }
+
+    // [62,125] -> [0,63] (6 bits)
+    let mut six_bits = false;
+    if stream.is_writing() {
+        six_bits = difference <= 125;
+    }
+    serialize_bool_macro(stream, &mut six_bits);
+    if six_bits {
+        serialize_int_macro(stream, &mut difference, 62, 125);
+        if stream.is_reading() {
+            *current = *previous + (difference as u32);
+        }
+        *previous = *current;
+        return true;
+    }
+    
+    // [126, MAX_OBJECTS+1]
+    serialize_int_macro(stream, &mut difference, 126, (MAX_OBJECTS + 1) as i32);
+    if stream.is_reading() {
+        *current = *previous + (difference as u32);
+        if *current > MAX_OBJECTS {
+            *current = MAX_OBJECTS;
+        }
+    }
+    *previous = *current;
+
+    return true;
+}
+
+
+/* 
+    // [126,MaxObjects+1] 
+    serialize_int( stream, difference, 126, MaxObjects + 1 );
+    if ( Stream::IsReading )
+    {
+        current = previous + difference;
+    }
+    previous = current;
+    return true;
+}
+
+ */
+
 
 
 
