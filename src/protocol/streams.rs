@@ -1,5 +1,5 @@
+use super::bitpacker::{BitReader, BitWriter};
 use crate::bits_required;
-use super::bitpacker::{BitWriter, BitReader};
 
 pub trait Stream {
     fn is_reading(&self) -> bool;
@@ -11,16 +11,18 @@ pub trait Stream {
 }
 
 pub struct WriteStream<'a> {
-    pub writer: BitWriter<'a>
+    pub writer: BitWriter<'a>,
 }
 
-impl<'a> WriteStream<'a>{
+impl<'a> WriteStream<'a> {
     pub fn new(buffer: &mut Vec<u32>) -> WriteStream {
-        return WriteStream { writer: BitWriter::new(buffer, 100) };
+        return WriteStream {
+            writer: BitWriter::new(buffer, 100),
+        };
     }
 }
 
-impl <'a>Stream for WriteStream<'a> {
+impl<'a> Stream for WriteStream<'a> {
     fn is_reading(&self) -> bool {
         false
     }
@@ -30,8 +32,12 @@ impl <'a>Stream for WriteStream<'a> {
     }
 
     fn serialize_bits(&mut self, value: &mut u32, bits: u32) -> bool {
-        if !(bits > 0) { false; }
-        if !(bits <= 32) { false; }
+        if !(bits > 0) {
+            false;
+        }
+        if !(bits <= 32) {
+            false;
+        }
         self.writer.write_bits(*value, bits);
         return true;
     }
@@ -49,7 +55,6 @@ impl <'a>Stream for WriteStream<'a> {
     }
 
     fn serialize_bytes(&mut self, bytes: &mut [u8], num_bytes: u32) -> bool {
-
         assert!(num_bytes > 0);
         if !self.serialize_align() {
             return false;
@@ -61,20 +66,21 @@ impl <'a>Stream for WriteStream<'a> {
     fn serialize_align(&mut self) -> bool {
         return self.writer.write_align();
     }
-
 }
 
 pub struct ReadStream<'a> {
-    reader: BitReader<'a>
+    reader: BitReader<'a>,
 }
 
-impl<'a> ReadStream<'a>{
+impl<'a> ReadStream<'a> {
     pub fn new(buffer: &mut Vec<u32>) -> ReadStream {
-        return ReadStream { reader: BitReader::new(buffer, 100) };
+        return ReadStream {
+            reader: BitReader::new(buffer, 100),
+        };
     }
 }
 
-impl <'a>Stream for ReadStream<'a> {
+impl<'a> Stream for ReadStream<'a> {
     fn is_reading(&self) -> bool {
         true
     }
@@ -93,21 +99,24 @@ impl <'a>Stream for ReadStream<'a> {
 
         let unsigned_val: u32 = self.reader.read_bits(bits);
         *value = unsigned_val as i32 + min; // Add minimum back to unsigned value.
-        return true
+        return true;
     }
 
     fn serialize_bits(&mut self, value: &mut u32, bits: u32) -> bool {
-        if !(bits > 0) { false; }
-        if !(bits <= 32) { false; }
+        if !(bits > 0) {
+            false;
+        }
+        if !(bits <= 32) {
+            false;
+        }
         if self.reader.would_read_past_end(bits) {
             false;
         }
         *value = self.reader.read_bits(bits);
-        return true
+        return true;
     }
 
     fn serialize_bytes(&mut self, bytes: &mut [u8], num_bytes: u32) -> bool {
-
         assert!(self.serialize_align());
         assert!(bytes.len() == num_bytes as usize);
 
@@ -125,4 +134,3 @@ impl <'a>Stream for ReadStream<'a> {
         return self.reader.read_align();
     }
 }
-
