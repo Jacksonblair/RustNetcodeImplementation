@@ -1,6 +1,5 @@
-use protocol::{streams::Stream, packet::test_packet};
+use protocol::{packets::test_packets::test_packet, serialization::serialize_int_macro};
 
-use crate::protocol::serialize_int_macro;
 pub mod protocol;
 
 trait Packet {
@@ -10,7 +9,7 @@ trait Packet {
 struct PacketA {
     x: i32,
     y: i32,
-    z: i32
+    z: i32,
 }
 
 impl PacketA {
@@ -21,7 +20,6 @@ impl PacketA {
 
 impl Packet for PacketA {
     fn Serialise(&mut self, stream: &mut impl protocol::streams::Stream) -> bool {
-
         serialize_int_macro(stream, &mut self.x, 0, i32::max_value());
         serialize_int_macro(stream, &mut self.y, 0, i32::max_value());
         serialize_int_macro(stream, &mut self.z, 0, i32::max_value());
@@ -34,12 +32,15 @@ const max_items: u32 = 32;
 
 struct PacketB {
     num_items: u32,
-    items: Vec<u32>
+    items: Vec<u32>,
 }
 
 impl PacketB {
     fn new(items: &Vec<u32>) -> PacketB {
-        return PacketB { num_items: items.len() as u32, items: items.to_vec() };
+        return PacketB {
+            num_items: items.len() as u32,
+            items: items.to_vec(),
+        };
     }
 }
 
@@ -54,7 +55,6 @@ impl Packet for PacketB {
         return true;
     }
 }
-
 
 /*
     WritePacket
@@ -75,20 +75,16 @@ impl Packet for PacketB {
 const MAX_PACKET_SIZE: usize = 100;
 
 // fn write_scene_a(stream: &mut dyn Stream, )
-/* 
+/*
     Packet Serialize
         serialize_some_thing(stream, scene)
 
     Packet SerializeInternal
         write_scene_b(stream, scene)
-
-
- */
-
+*/
 
 fn main() {
-
-    test_packet();
+    test_packet()
 
     // some_fn();
 
@@ -100,7 +96,6 @@ fn main() {
     // for v in buffer.iter().enumerate() {
     //     println!("{:#034b}", v.1);
     // }
-
 
     // let mut r_stream_1 = streams::ReadStream::new(&mut buffer);
 
@@ -124,7 +119,7 @@ fn main() {
 
     // let mut packet_a_2 = PacketA{ x: 0, y: 0, z: 0 };
 
-    // // Only want to send 5 bytes, but i can just chuck that into a vec32 on the receiving side. 
+    // // Only want to send 5 bytes, but i can just chuck that into a vec32 on the receiving side.
 
     // packet_a_2.read(&mut reader);
 }

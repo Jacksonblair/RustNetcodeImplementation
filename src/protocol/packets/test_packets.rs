@@ -1,34 +1,19 @@
-use super::{streams::{ReadStream, WriteStream, Stream}};
+use crate::protocol::streams::{ReadStream, Stream, WriteStream};
 
-#[derive(Copy, Clone)]
-pub enum PacketTypes {
-    TestPacketA
-}
-
-pub trait Object {
-    fn serialize_internal_r(&mut self, stream: &mut ReadStream) -> bool;
-    fn serialize_internal_w(&mut self, stream: &mut WriteStream) -> bool;
-}
-
-pub trait Packet: Object {
-    fn get_packet_type() -> PacketTypes;
-}
-
+use super::{Object, Packet, PacketTypes};
 
 pub struct TestObjectA {
     x: i32,
     y: i32,
-    z: i32
+    z: i32,
 }
 
-// - Test Packet A -
-
 pub struct TestPacketA {
-    object_a: TestObjectA
+    object_a: TestObjectA,
 }
 
 impl Packet for TestPacketA {
-    fn get_packet_type() -> PacketTypes {
+    fn get_packet_type(&self) -> PacketTypes {
         PacketTypes::TestPacketA
     }
 }
@@ -54,12 +39,12 @@ pub fn test_packet() {
     let mut buffer: Vec<u32> = vec![0; 100];
 
     let mut writestream = WriteStream::new(&mut buffer);
-    let mut pack = TestPacketA{
-        object_a: TestObjectA{
+    let mut pack = TestPacketA {
+        object_a: TestObjectA {
             x: 10,
             y: 20,
-            z: 30
-        }
+            z: 30,
+        },
     };
 
     pack.serialize_internal_w(&mut writestream);
