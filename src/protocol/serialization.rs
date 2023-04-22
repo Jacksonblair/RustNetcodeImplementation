@@ -4,11 +4,16 @@ use vector3d::Vector3d;
 
 use crate::bits_required;
 
-use super::streams::Stream;
+use super::{packets::Object, streams::Stream};
 
 const MAX_OBJECTS: u32 = 1024;
 
-pub fn serialize_float_internal<T: Stream>(stream: &mut T, value: &mut f32) -> bool {
+pub fn serialize_object(stream: &mut dyn Stream, object: &mut dyn Object) -> bool {
+    // return object.serialize(stream);
+    true
+}
+
+pub fn serialize_float_internal(stream: &mut dyn Stream, value: &mut f32) -> bool {
     // Convert float to an integer representation
     let mut as_int = value.to_bits();
     let result = stream.serialize_bits(&mut as_int, 32);
@@ -132,12 +137,17 @@ pub fn serialize_string_internal<T: Stream>(stream: &mut T, string: &mut String)
     true
 }
 
-pub fn serialize_int_macro<T: Stream>(stream: &mut T, value: &mut i32, min: i32, max: i32) -> bool {
+pub fn serialize_int_macro(stream: &mut dyn Stream, value: &mut i32, min: i32, max: i32) -> bool {
     assert!(min < max);
     let mut val: i32 = 0;
 
     if stream.is_writing() {
-        assert!(*value >= min);
+        assert!(
+            *value >= min,
+            "Value ({}) is < minimum value ({})",
+            *value,
+            min
+        );
         assert!(*value <= max);
         val = *value;
     }
@@ -157,7 +167,7 @@ pub fn serialize_int_macro<T: Stream>(stream: &mut T, value: &mut i32, min: i32,
 }
 
 // TODO: Turn into a macro
-pub fn serialize_float_macro<T: Stream>(stream: &mut T, value: &mut f32) -> bool {
+pub fn serialize_float_macro(stream: &mut dyn Stream, value: &mut f32) -> bool {
     if !serialize_float_internal(stream, value) {
         return false;
     }
@@ -193,7 +203,7 @@ pub fn serialize_bytes_macro<T: Stream>(stream: &mut T, bytes: &mut [u8], num_by
     return serialize_bytes_internal(stream, bytes, num_bytes);
 }
 
-pub fn serialize_bits_macro<T: Stream>(stream: &mut T, value: &mut u32, bits: u32) -> bool {
+pub fn serialize_bits_macro(stream: &mut dyn Stream, value: &mut u32, bits: u32) -> bool {
     assert!(bits > 0);
     assert!(bits <= 32);
     let mut u32_val: u32 = 0;
@@ -209,7 +219,7 @@ pub fn serialize_bits_macro<T: Stream>(stream: &mut T, value: &mut u32, bits: u3
     true
 }
 
-pub fn serialize_bool_macro<T: Stream>(stream: &mut T, value: &mut bool) -> bool {
+pub fn serialize_bool_macro(stream: &mut dyn Stream, value: &mut bool) -> bool {
     let mut uint32_bool_value = 0;
     if stream.is_writing() {
         if *value {
@@ -229,10 +239,10 @@ pub fn serialize_bool_macro<T: Stream>(stream: &mut T, value: &mut bool) -> bool
     true
 }
 
-pub fn serialize_object_index_internal<T: Stream>(
-    stream: &mut T,
-    previous: &mut u32,
-    current: &mut u32,
+pub fn serialize_object_index_internal(
+    stream: &mut dyn Stream,
+    previous: &mut i32,
+    current: &mut i32,
 ) -> bool {
     let mut difference: i32 = 0;
 
@@ -279,7 +289,7 @@ pub fn serialize_object_index_internal<T: Stream>(
     if two_bits {
         serialize_int_macro(stream, &mut difference, 2, 5);
         if stream.is_reading() {
-            *current = *previous + difference as u32;
+            *current = *previous + difference;
         }
         *previous = *current;
         return true;
@@ -294,7 +304,7 @@ pub fn serialize_object_index_internal<T: Stream>(
     if three_bits {
         serialize_int_macro(stream, &mut difference, 6, 13);
         if stream.is_reading() {
-            *current = *previous - (difference as u32);
+            *current = *previous - difference;
         }
         *previous = *current;
         return true;
@@ -309,7 +319,7 @@ pub fn serialize_object_index_internal<T: Stream>(
     if four_bits {
         serialize_int_macro(stream, &mut difference, 14, 29);
         if stream.is_reading() {
-            *current = *previous + (difference as u32);
+            *current = *previous + difference;
         }
         *previous = *current;
         return true;
@@ -324,7 +334,7 @@ pub fn serialize_object_index_internal<T: Stream>(
     if five_bits {
         serialize_int_macro(stream, &mut difference, 30, 61);
         if stream.is_reading() {
-            *current = *previous + (difference as u32);
+            *current = *previous + difference;
         }
         *previous = *current;
         return true;
@@ -339,7 +349,7 @@ pub fn serialize_object_index_internal<T: Stream>(
     if six_bits {
         serialize_int_macro(stream, &mut difference, 62, 125);
         if stream.is_reading() {
-            *current = *previous + (difference as u32);
+            *current = *previous + difference;
         }
         *previous = *current;
         return true;
@@ -348,9 +358,9 @@ pub fn serialize_object_index_internal<T: Stream>(
     // [126, MAX_OBJECTS+1]
     serialize_int_macro(stream, &mut difference, 126, (MAX_OBJECTS + 1) as i32);
     if stream.is_reading() {
-        *current = *previous + (difference as u32);
-        if *current > MAX_OBJECTS {
-            *current = MAX_OBJECTS;
+        *current = *previous + difference;
+        if *current > MAX_OBJECTS as i32 {
+            *current = MAX_OBJECTS as i32;
         }
     }
     *previous = *current;
@@ -359,21 +369,18 @@ pub fn serialize_object_index_internal<T: Stream>(
 }
 
 // TODO: Turn into a macro
-fn read_object_index_macro<T: Stream>(
-    stream: &mut T,
-    previous: &mut u32,
-    current: &mut u32,
+pub fn read_object_index_macro(
+    stream: &mut dyn Stream,
+    previous: &mut i32,
+    current: &mut i32,
 ) -> bool {
     return serialize_object_index_internal(stream, previous, current);
 }
 
 // TODO: Turn into a macro
-fn write_object_index_macro<T: Stream>(
-    stream: &mut T,
-    previous: &mut u32,
-    current: &mut u32,
-) -> bool {
-    return serialize_object_index_internal(stream, previous, current);
+pub fn write_object_index_macro(stream: &mut dyn Stream, previous: &mut i32, current: i32) -> bool {
+    let mut temp_current: i32 = current;
+    return serialize_object_index_internal(stream, previous, &mut temp_current);
 }
 
 mod tests {
@@ -492,9 +499,10 @@ mod tests {
     fn test_serialization() {
         let mut obj = TestObject::new();
         let mut buffer = vec![0; 100];
+        let buffer_size = buffer.len();
 
         {
-            let mut write_stream = WriteStream::new(&mut buffer);
+            let mut write_stream = WriteStream::new(&mut buffer, buffer_size);
             obj.serialize(&mut write_stream);
         }
     }

@@ -8,6 +8,7 @@ pub trait Stream {
     fn serialize_bits(&mut self, value: &mut u32, bits: u32) -> bool;
     fn serialize_align(&mut self) -> bool;
     fn serialize_bytes(&mut self, bytes: &mut [u8], num_bytes: u32) -> bool;
+    fn get_bytes_processed(&mut self) -> u32;
 }
 
 pub struct WriteStream<'a> {
@@ -15,9 +16,9 @@ pub struct WriteStream<'a> {
 }
 
 impl<'a> WriteStream<'a> {
-    pub fn new(buffer: &mut Vec<u32>) -> WriteStream {
+    pub fn new(buffer: &mut Vec<u32>, buffer_size: usize) -> WriteStream {
         return WriteStream {
-            writer: BitWriter::new(buffer, 100),
+            writer: BitWriter::new(buffer, buffer_size),
         };
     }
 }
@@ -43,13 +44,12 @@ impl<'a> Stream for WriteStream<'a> {
     }
 
     fn serialise_int(&mut self, value: &mut i32, min: i32, max: i32) -> bool {
-        /*
-            assert( min < max );
-            assert( value >= min );
-            assert( value <= max );
-        */
+        assert!(min < max);
+        assert!(*value >= min);
+        assert!(*value <= max);
+
         let bits: u32 = bits_required!(min, max);
-        let unsigned_val = (*value - min) as u32;
+        let unsigned_val = (*value).abs_diff(min) as u32;
         self.writer.write_bits(unsigned_val, bits);
         return true;
     }
@@ -65,6 +65,10 @@ impl<'a> Stream for WriteStream<'a> {
 
     fn serialize_align(&mut self) -> bool {
         return self.writer.write_align();
+    }
+
+    fn get_bytes_processed(&mut self) -> u32 {
+        return self.writer.get_bytes_written();
     }
 }
 
@@ -98,7 +102,8 @@ impl<'a> Stream for ReadStream<'a> {
         }
 
         let unsigned_val: u32 = self.reader.read_bits(bits);
-        *value = unsigned_val as i32 + min; // Add minimum back to unsigned value.
+
+        *value = (unsigned_val as i64 + min as i64) as i32; // Add minimum back to unsigned value.
         return true;
     }
 
@@ -132,5 +137,9 @@ impl<'a> Stream for ReadStream<'a> {
 
     fn serialize_align(&mut self) -> bool {
         return self.reader.read_align();
+    }
+
+    fn get_bytes_processed(&mut self) -> u32 {
+        return (self.reader.num_bits_read + 7) / 8;
     }
 }

@@ -1,4 +1,35 @@
 use super::streams::Stream;
+use std::num::Wrapping;
+
+// #define PROTOCOL2_DECLARE_VIRTUAL_SERIALIZE_FUNCTIONS()            \
+//     bool SerializeInternal(class protocol2::ReadStream &stream)    \
+//     {                                                              \
+//         return Serialize(stream);                                  \
+//     };                                                             \
+//     bool SerializeInternal(class protocol2::WriteStream &stream)   \
+//     {                                                              \
+//         return Serialize(stream);                                  \
+//     };                                                             \
+//     bool SerializeInternal(class protocol2::MeasureStream &stream) \
+//     {                                                              \
+//         return Serialize(stream);                                  \
+//     };
+
+#[macro_export]
+macro_rules! impl_object_for_packet {
+    ($t:ident) => {
+        impl Object for $t {
+            fn serialize_internal_r(&mut self, stream: &mut ReadStream) -> bool {
+                println!("MACRO: READING PACKET");
+                self.serialize(stream)
+            }
+            fn serialize_internal_w(&mut self, stream: &mut WriteStream) -> bool {
+                println!("MACRO: WRITING PACKET");
+                self.serialize(stream)
+            }
+        }
+    };
+}
 
 /* c++ style assert */
 #[macro_export]
@@ -10,9 +41,30 @@ macro_rules! assert_expr {
     };
 }
 
-/*
+/**
     Macro for calculating number of bits required for a 32 bit value.
 */
+
+/*
+#define BITS_REQUIRED(min, max) BitsRequired<min, max>::result
+
+    inline uint32_t popcount(uint32_t x)
+    {
+#ifdef __GNUC__
+        return __builtin_popcount(x);
+#else  // #ifdef __GNUC__
+        const uint32_t a = x - ((x >> 1) & 0x55555555);
+        const uint32_t b = (((a >> 2) & 0x33333333) + (a & 0x33333333));
+        const uint32_t c = (((b >> 4) + b) & 0x0f0f0f0f);
+        const uint32_t d = c + (c >> 8);
+        const uint32_t e = d + (d >> 16);
+        const uint32_t result = e & 0x0000003f;
+        return result;
+#endif // #ifdef __GNUC__
+    }
+
+ */
+
 #[macro_export]
 macro_rules! bits_required {
     ($min:expr,$max:expr) => {
@@ -20,7 +72,7 @@ macro_rules! bits_required {
             let out: u32 = 0;
             out
         } else {
-            let val = $max - $min;
+            let val = $max.abs_diff($min);
             let a = val | (val >> 1);
             let b = a | (a >> 2);
             let c = b | (b >> 4);
@@ -34,31 +86,30 @@ macro_rules! bits_required {
 }
 
 /*
-    Macro for calculating number of bits required for a 32 bit value.
+Macro for calculating number of bits required for a 32 bit value.
 
-	#define serialize_int( stream, value, min, max )                    \
-        do                                                              \
-        {                                                               \
-            assert( min < max );                                        \
-            int32_t int32_value;                                        \
-            if ( Stream::IsWriting )                                    \
-            {                                                           \
-                assert( int64_t(value) >= int64_t(min) );               \
-                assert( int64_t(value) <= int64_t(max) );               \
-                int32_value = (int32_t) value;                          \
-            }                                                           \
-            if ( !stream.SerializeInteger( int32_value, min, max ) )    \
-                return false;                                           \
-            if ( Stream::IsReading )                                    \
-            {                                                           \
-                value = int32_value;                                    \
-                if ( value < min || value > max )                       \
-                    return false;                                       \
-            }                                                           \
-        } while (0)
+#define serialize_int( stream, value, min, max )                    \
+    do                                                              \
+    {                                                               \
+        assert( min < max );                                        \
+        int32_t int32_value;                                        \
+        if ( Stream::IsWriting )                                    \
+        {                                                           \
+            assert( int64_t(value) >= int64_t(min) );               \
+            assert( int64_t(value) <= int64_t(max) );               \
+            int32_value = (int32_t) value;                          \
+        }                                                           \
+        if ( !stream.SerializeInteger( int32_value, min, max ) )    \
+            return false;                                           \
+        if ( Stream::IsReading )                                    \
+        {                                                           \
+            value = int32_value;                                    \
+            if ( value < min || value > max )                       \
+                return false;                                       \
+        }                                                           \
+    } while (0)
 
-        */
-
+    */
 
 // #[macro_export]
 // macro_rules! serialise_int {
