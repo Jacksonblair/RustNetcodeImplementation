@@ -181,12 +181,12 @@ pub struct BitReader<'a> {
 }
 
 impl BitReader<'_> {
-    pub fn new(buffer: &mut Vec<u32>, bytes: u32) -> BitReader {
+    pub fn new(buffer: &mut Vec<u32>, bytes: usize) -> BitReader {
         assert!(buffer.len() % 4 == 0, "bytes must be a multiple of 4");
         return BitReader {
             scratch: 0,
             scratch_bits: 0,
-            num_bits: bytes * 8,
+            num_bits: (bytes as u32) * 8,
             num_bits_read: 0,
             word_index: 0,
             buffer,
@@ -252,8 +252,6 @@ impl BitReader<'_> {
     }
 
     pub fn read_bytes(&mut self, bytes: &mut [u8], num_bytes: u32) {
-        println!("reading bytes: {:?} {:?}", num_bytes, bytes);
-
         // Check we're aligned to byte
         assert!(self.get_align_bits() == 0);
 
@@ -393,7 +391,7 @@ mod tests {
         }
 
         {
-            let mut reader = BitReader::new(&mut buffer, bytes_written);
+            let mut reader = BitReader::new(&mut buffer, bytes_written as usize);
 
             assert_eq!(reader.get_bits_read(), 0);
             assert_eq!(reader.get_bits_remaining(), bytes_written * 8);

@@ -185,7 +185,7 @@ pub fn read_packet(
     //if (errorCode)
     //*errorCode = PROTOCOL2_ERROR_NONE;
 
-    let mut stream = ReadStream::new(buffer);
+    let mut stream = ReadStream::new(buffer, buffer.len());
     // stream.SetContext(info.context);
 
     // for i in 0..info.prefix_bytes {

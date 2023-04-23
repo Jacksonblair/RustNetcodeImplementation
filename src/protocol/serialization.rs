@@ -6,7 +6,7 @@ use crate::bits_required;
 
 use super::{packets::Object, streams::Stream};
 
-const MAX_OBJECTS: u32 = 1024;
+pub const MAX_OBJECTS: u32 = 1024;
 
 pub fn serialize_object(stream: &mut dyn Stream, object: &mut dyn Object) -> bool {
     // return object.serialize(stream);
@@ -123,15 +123,30 @@ pub fn serialize_bytes_internal<T: Stream>(
     return stream.serialize_bytes(bytes, num_bytes);
 }
 
-pub fn serialize_string_internal<T: Stream>(stream: &mut T, string: &mut String) -> bool {
+pub fn serialize_string_internal<T: Stream>(
+    stream: &mut T,
+    string: &mut String,
+    buffer_size: usize,
+) -> bool {
     let mut length: i32 = 0;
     if stream.is_writing() {
         length = string.len() as i32;
+        assert!((length as usize) < buffer_size - 1);
     }
 
-    serialize_int_macro(stream, &mut length, 0, string.len() as i32);
-    unsafe {
-        serialize_bytes_macro(stream, string.as_bytes_mut(), length as u32);
+    serialize_int_macro(stream, &mut length, 0, buffer_size as i32);
+
+    /* We serialize the length, create a byte vec to hold. Is this a bad idea? */
+    let mut bytes: Vec<u8> = vec![0; length as usize];
+    let string_bytes = string.as_bytes();
+    for i in 0..bytes.len() {
+        bytes[i] = string_bytes[i];
+    }
+
+    serialize_bytes_macro(stream, &mut bytes, length as u32);
+
+    if stream.is_reading() {
+        *string = String::from_utf8(bytes).unwrap();
     }
 
     true
@@ -195,8 +210,12 @@ pub fn serialize_vector_macro<T: Stream>(stream: &mut T, vector: &mut Vector3d<f
     true
 }
 
-pub fn serialize_string_macro<T: Stream>(stream: &mut T, string: &mut String) -> bool {
-    return serialize_string_internal(stream, string);
+pub fn serialize_string_macro<T: Stream>(
+    stream: &mut T,
+    string: &mut String,
+    buffer_size: usize,
+) -> bool {
+    return serialize_string_internal(stream, string, buffer_size);
 }
 
 pub fn serialize_bytes_macro<T: Stream>(stream: &mut T, bytes: &mut [u8], num_bytes: u32) -> bool {
@@ -208,7 +227,7 @@ pub fn serialize_bits_macro(stream: &mut dyn Stream, value: &mut u32, bits: u32)
     assert!(bits <= 32);
     let mut u32_val: u32 = 0;
     if stream.is_writing() {
-        // TODO: When this is a macro, cast value to a u32?
+        u32_val = *value;
     }
     if !stream.serialize_bits(&mut u32_val, bits) {
         return false;
@@ -222,7 +241,7 @@ pub fn serialize_bits_macro(stream: &mut dyn Stream, value: &mut u32, bits: u32)
 pub fn serialize_bool_macro(stream: &mut dyn Stream, value: &mut bool) -> bool {
     let mut uint32_bool_value = 0;
     if stream.is_writing() {
-        if *value {
+        if *value == true {
             uint32_bool_value = 1;
         } else {
             uint32_bool_value = 0;
@@ -252,12 +271,9 @@ pub fn serialize_object_index_internal(
         - * If we're only serializing a index diff of 1, we dont need to encode the bits required, because it can only be one
         - * If we serializing a diff that takes over 6 bits to encode (12 including the bits required), we just serialize enough bits to encode the maximum number of objects
 
-        Ex. Encoding a diff of 5 (say 12 to 17)
-        - we encode 3 bits (as the length), and then encode the diff.
-        - result: 011 101
-
-        Ex. Encoding a diff of 1 (say 500 to 501)
-        - result: 1
+        We write a boolean for each index to indicate the number of bits required to serialize an index, and then the actual index.
+        EX. If the index takes 5 bits to serialize, we will write 5 zeroes before we write the value.
+        EX. If the index takes over 6 bits to encode, we wil write 6 zeroes and then just serialize the value using the max amount of bits it could be.
     */
 
     if stream.is_writing() {
@@ -357,6 +373,7 @@ pub fn serialize_object_index_internal(
 
     // [126, MAX_OBJECTS+1]
     serialize_int_macro(stream, &mut difference, 126, (MAX_OBJECTS + 1) as i32);
+
     if stream.is_reading() {
         *current = *previous + difference;
         if *current > MAX_OBJECTS as i32 {
@@ -385,17 +402,16 @@ pub fn write_object_index_macro(stream: &mut dyn Stream, previous: &mut i32, cur
 
 mod tests {
     use super::*;
-    use crate::protocol::streams::WriteStream;
+    use crate::{
+        impl_object_for_packet,
+        protocol::streams::{ReadStream, WriteStream},
+    };
 
-    #[derive(Default)]
+    #[derive(PartialEq, Debug)]
     struct TestData {
-        max_items: i32,
-        max_int: i32,
-        min_int: i32,
-        items: Vec<u32>,
-        num_items: i32,
-        bytes: Vec<u8>,
-
+        // num_items: i32,
+        // items: Vec<u32>,
+        // bytes: Vec<u8>,
         test_int_a: i32,
         test_int_b: i32,
         test_int_c: i32,
@@ -405,89 +421,117 @@ mod tests {
         test_bool: bool,
 
         test_float: f32,
-        test_u64: u64,
+        // test_u64: u64,
         test_string: String,
     }
 
+    impl Default for TestData {
+        fn default() -> Self {
+            return TestData {
+                // num_items: 20,
+                // items: vec![0; 20],
+                // bytes: vec![0; 17],
+                test_int_a: 0,
+                test_int_b: 0,
+                test_int_c: 0,
+                test_int_d: 0,
+                test_int_e: 0,
+                test_int_f: 0,
+                test_bool: false,
+                test_float: 0.0,
+                // test_u64: 0,
+                test_string: String::from_utf8(vec![0; 500]).unwrap(),
+            };
+        }
+    }
+
+    #[derive(Debug)]
     struct TestObject {
+        max_items: i32,
+        max_int: i32,
+        min_int: i32,
         data: TestData,
     }
 
     impl TestObject {
         pub fn new() -> TestObject {
-            let mut data = TestData::default();
+            return TestObject {
+                max_items: 11,
+                max_int: 10,
+                min_int: -10,
+                data: TestData::default(),
+            };
+        }
 
-            data.max_items = 11;
-            data.max_int = 10;
-            data.min_int = -10;
-            data.items = vec![0; data.max_items as usize];
-            data.bytes = vec![0; 17];
+        pub fn init(&mut self) {
+            self.data.test_int_a = 1;
+            self.data.test_int_b = -2;
+            self.data.test_int_c = 150;
+            self.data.test_int_d = 55;
+            self.data.test_int_e = 255;
+            self.data.test_int_f = 127;
+            self.data.test_bool = true;
 
-            data.test_int_a = 1;
-            data.test_int_b = -2;
-            data.test_int_c = 150;
-            data.test_int_d = 55;
-            data.test_int_e = 255;
-            data.test_int_f = 127;
-            data.test_bool = true;
+            self.data.test_float = 3.1315926;
+            // self.data.test_u64 = 0x1234567898765432;
 
-            data.num_items = data.max_items / 2;
-            for i in 0..data.num_items {
-                data.items[i as usize] = i as u32 + 10;
-            }
+            // self.data.items = vec![0; self.max_items as usize];
+            // self.data.bytes = vec![0; 17];
 
-            data.test_float = 3.1315926;
-            data.test_u64 = 0x1234567898765432;
+            // self.data.num_items = self.max_items / 2;
+            // for i in 0..self.data.num_items {
+            //     self.data.items[i as usize] = i as u32 + 10;
+            // }
 
-            let mut rng = rand::thread_rng();
-            for i in 0..data.bytes.len() {
-                data.bytes[i] = rng.gen::<u8>() % 255;
-            }
+            // let mut rng = rand::thread_rng();
+            // for i in 0..self.data.bytes.len() {
+            //     self.data.bytes[i] = rng.gen::<u8>() % 255;
+            // }
 
-            data.test_string = String::from("Hello world!");
-
-            return TestObject { data };
+            self.data.test_string = String::from("Hello world!");
         }
 
         pub fn serialize<T: Stream>(&mut self, stream: &mut T) -> bool {
             serialize_int_macro(
                 stream,
                 &mut self.data.test_int_a,
-                self.data.min_int,
-                self.data.max_int,
+                self.min_int,
+                self.max_int,
             );
             serialize_int_macro(
                 stream,
                 &mut self.data.test_int_b,
-                self.data.min_int,
-                self.data.max_int,
+                self.min_int,
+                self.max_int,
             );
             serialize_int_macro(stream, &mut self.data.test_int_c, -100, 10000);
-
             serialize_bits_macro(stream, &mut self.data.test_int_d, 6);
             serialize_bits_macro(stream, &mut self.data.test_int_e, 8);
             serialize_bits_macro(stream, &mut self.data.test_int_f, 7);
 
-            // serialize_align( stream );
+            // serialize_align(stream);
 
             serialize_bool_macro(stream, &mut self.data.test_bool);
+            serialize_float_macro(stream, &mut self.data.test_float); // BUSTED
+
+            serialize_string_macro(stream, &mut self.data.test_string, 100);
 
             // serialize_check( stream, "test object serialize check" );
 
-            serialize_int_macro(stream, &mut self.data.num_items, 0, self.data.max_items - 1);
-            for i in 0..self.data.num_items {
-                serialize_bits_macro(stream, &mut self.data.items[i as usize], 8);
-            }
+            // serialize_int_macro(
+            //     stream,
+            //     &mut self.data.num_items,
+            //     0,
+            //     (self.max_items as i32) - 1,
+            // );
+            // for i in 0..self.data.num_items {
+            //     serialize_bits_macro(stream, &mut self.data.items[i as usize], 8);
+            // }
 
-            serialize_float_macro(stream, &mut self.data.test_float);
-
-            // serialize_uint64( stream, data.uint64_value );
-
-            let num_bytes = self.data.bytes.len() as u32;
-            serialize_bytes_macro(stream, &mut self.data.bytes, num_bytes);
-
-            let str_len = self.data.test_string.len() as u32;
-            serialize_string_macro(stream, &mut self.data.test_string);
+            // let num_bytes = self.data.bytes.len() as u32;
+            // serialize_bytes_macro(stream, &mut self.data.bytes, num_bytes);
+            // serialize_uint64(stream, data.uint64_value);
+            // let str_len = self.data.test_string.len() as u32;
 
             // serialize_check( stream, "end of test object" );
 
@@ -495,15 +539,24 @@ mod tests {
         }
     }
 
+    impl_object_for_packet!(TestObject);
+
     #[test]
     fn test_serialization() {
-        let mut obj = TestObject::new();
+        let mut write_obj = TestObject::new();
+        write_obj.init();
         let mut buffer = vec![0; 100];
         let buffer_size = buffer.len();
 
         {
             let mut write_stream = WriteStream::new(&mut buffer, buffer_size);
-            obj.serialize(&mut write_stream);
+            write_obj.serialize(&mut write_stream);
         }
+
+        let mut read_stream = ReadStream::new(&mut buffer, buffer_size);
+        let mut read_object = TestObject::new();
+        read_object.serialize(&mut read_stream);
+
+        assert!(read_object.data == write_obj.data);
     }
 }

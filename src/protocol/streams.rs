@@ -43,13 +43,15 @@ impl<'a> Stream for WriteStream<'a> {
         return true;
     }
 
+    /** serialize_int will write the value (minus the min value to save space) */
     fn serialise_int(&mut self, value: &mut i32, min: i32, max: i32) -> bool {
         assert!(min < max);
         assert!(*value >= min);
         assert!(*value <= max);
 
         let bits: u32 = bits_required!(min, max);
-        let unsigned_val = (*value).abs_diff(min) as u32;
+        // Convert to higher size int before subtracting to prevent overflow
+        let unsigned_val = ((*value as i64) - (min as i64)) as u32;
         self.writer.write_bits(unsigned_val, bits);
         return true;
     }
@@ -77,9 +79,9 @@ pub struct ReadStream<'a> {
 }
 
 impl<'a> ReadStream<'a> {
-    pub fn new(buffer: &mut Vec<u32>) -> ReadStream {
+    pub fn new(buffer: &mut Vec<u32>, buffer_size: usize) -> ReadStream {
         return ReadStream {
-            reader: BitReader::new(buffer, 100),
+            reader: BitReader::new(buffer, buffer_size),
         };
     }
 }
