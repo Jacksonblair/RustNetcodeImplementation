@@ -1,4 +1,7 @@
-use super::bitpacker::{BitReader, BitWriter};
+use super::{
+    bitpacker::{BitReader, BitWriter},
+    ProtocolError,
+};
 use crate::bits_required;
 
 pub trait Stream {
@@ -7,23 +10,30 @@ pub trait Stream {
     fn serialise_int(&mut self, value: &mut i32, min: i32, max: i32) -> bool;
     fn serialize_bits(&mut self, value: &mut u32, bits: u32) -> bool;
     fn serialize_align(&mut self) -> bool;
-    fn serialize_bytes(&mut self, bytes: &mut [u8], num_bytes: u32) -> bool;
+    fn serialize_bytes(&mut self, bytes: &mut Vec<u8>, num_bytes: u32) -> bool;
     fn get_bytes_processed(&mut self) -> u32;
+    fn get_error(&mut self) -> ProtocolError;
 }
 
 pub struct WriteStream<'a> {
     pub writer: BitWriter<'a>,
+    error: ProtocolError,
 }
 
 impl<'a> WriteStream<'a> {
     pub fn new(buffer: &mut Vec<u32>, buffer_size: usize) -> WriteStream {
         return WriteStream {
             writer: BitWriter::new(buffer, buffer_size),
+            error: ProtocolError::None,
         };
     }
 }
 
 impl<'a> Stream for WriteStream<'a> {
+    fn get_error(&mut self) -> ProtocolError {
+        return self.error;
+    }
+
     fn is_reading(&self) -> bool {
         false
     }
@@ -56,7 +66,7 @@ impl<'a> Stream for WriteStream<'a> {
         return true;
     }
 
-    fn serialize_bytes(&mut self, bytes: &mut [u8], num_bytes: u32) -> bool {
+    fn serialize_bytes(&mut self, bytes: &mut Vec<u8>, num_bytes: u32) -> bool {
         assert!(num_bytes > 0);
         if !self.serialize_align() {
             return false;
@@ -76,17 +86,23 @@ impl<'a> Stream for WriteStream<'a> {
 
 pub struct ReadStream<'a> {
     reader: BitReader<'a>,
+    error: ProtocolError,
 }
 
 impl<'a> ReadStream<'a> {
     pub fn new(buffer: &mut Vec<u32>, buffer_size: usize) -> ReadStream {
         return ReadStream {
             reader: BitReader::new(buffer, buffer_size),
+            error: ProtocolError::None,
         };
     }
 }
 
 impl<'a> Stream for ReadStream<'a> {
+    fn get_error(&mut self) -> ProtocolError {
+        return self.error;
+    }
+
     fn is_reading(&self) -> bool {
         true
     }
@@ -110,25 +126,22 @@ impl<'a> Stream for ReadStream<'a> {
     }
 
     fn serialize_bits(&mut self, value: &mut u32, bits: u32) -> bool {
-        if !(bits > 0) {
-            false;
-        }
-        if !(bits <= 32) {
-            false;
-        }
+        assert!(bits > 0);
+        assert!(bits <= 32);
         if self.reader.would_read_past_end(bits) {
-            false;
+            return false;
         }
         *value = self.reader.read_bits(bits);
+
         return true;
     }
 
-    fn serialize_bytes(&mut self, bytes: &mut [u8], num_bytes: u32) -> bool {
+    fn serialize_bytes(&mut self, bytes: &mut Vec<u8>, num_bytes: u32) -> bool {
         assert!(self.serialize_align());
         assert!(bytes.len() == num_bytes as usize);
 
         if self.reader.would_read_past_end(num_bytes * 8) {
-            // Throw some overflow error?
+            self.error = ProtocolError::StreamOverflow;
             return false;
         }
 

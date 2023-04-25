@@ -1,11 +1,11 @@
 pub struct BitWriter<'a> {
-    buffer: &'a mut Vec<u32>,
-    scratch: u64,
-    num_bits: u32,
-    num_words: u32,
-    bits_written: u32,
-    word_index: u32,
-    scratch_bits: i32,
+    buffer: &'a mut Vec<u32>, // Pointer to buffer
+    scratch: u64,             // 64 bit scratch buffer
+    num_bits: u32,            // Bits in buffer
+    num_words: u32,           // Words in buffer
+    bits_written: u32,        // Number of bits written to buffer
+    word_index: u32,          // Current word index
+    scratch_bits: i32,        // Number of bits in scratch buffer
 }
 
 impl BitWriter<'_> {
@@ -110,12 +110,14 @@ impl BitWriter<'_> {
         if head_bytes > num_bytes {
             head_bytes = num_bytes;
         }
-        // HERE
         for i in 0..head_bytes {
             self.write_bits(bytes[i as usize] as u32, 8);
         }
 
-        // println!("WROTE HEAD: {:#034b}", self.buffer[(self.word_index - 1) as usize]);
+        // println!(
+        //     "WROTE HEAD: {:#034b}",
+        //     self.buffer[(self.word_index - 1) as usize]
+        // );
 
         if head_bytes == num_bytes {
             return true;
@@ -133,7 +135,7 @@ impl BitWriter<'_> {
                 // COPY ALL THE WORDS at once into buffer.
                 let dest_ptr = self.buffer.as_mut_ptr().add(self.word_index as usize);
                 let src_ptr = bytes.as_ptr().add(head_bytes as usize) as *const u32;
-                std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, (num_words * 4) as usize);
+                std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, num_words as usize);
             }
             self.bits_written += num_words * 32;
             self.word_index += num_words;
@@ -146,6 +148,7 @@ impl BitWriter<'_> {
 
         let tail_bytes_start = head_bytes + num_words * 4;
         let tail_bytes = num_bytes - tail_bytes_start;
+
         assert!(tail_bytes < 4);
         for i in 0..tail_bytes {
             self.write_bits(bytes[(tail_bytes_start + i) as usize] as u32, 8);
@@ -172,12 +175,12 @@ impl BitWriter<'_> {
 }
 
 pub struct BitReader<'a> {
-    buffer: &'a Vec<u32>,
-    scratch: u64,
-    scratch_bits: u32,
-    num_bits: u32,
-    pub num_bits_read: u32,
-    word_index: u32,
+    buffer: &'a Vec<u32>,   // Pointer to buffer
+    scratch: u64,           // 64 bit scratch buffer
+    pub scratch_bits: u32,  // Number of bits in scratch buffer
+    num_bits: u32,          // Bits in buffer
+    pub num_bits_read: u32, // Number of bits read from buffer
+    pub word_index: u32,    // Current word index
 }
 
 impl BitReader<'_> {
@@ -269,7 +272,7 @@ impl BitReader<'_> {
         // How many bytes avail in current word
         let mut head_bytes = (4 - (self.num_bits_read % 32) / 8) % 4;
 
-        // -- Read head --
+        // -- Reading leading word --
 
         if head_bytes > num_bytes {
             head_bytes = num_bytes;
@@ -283,61 +286,32 @@ impl BitReader<'_> {
 
         assert!(self.get_align_bits() == 0);
 
+        // -- Reading words at a time --
+
         let num_words = (num_bytes - head_bytes) / 4;
-
         if num_words > 0 {
-            println!("READING WORDS");
-
             assert!((self.num_bits_read % 32) == 0);
             unsafe {
                 let src_ptr = self.buffer.as_ptr().add(self.word_index as usize);
                 let dest_ptr = bytes.as_ptr().add(head_bytes as usize) as *mut u32;
-                std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, (num_words * 4) as usize);
+                std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, num_words as usize);
             }
-
             self.num_bits_read += num_words * 32;
             self.word_index += num_words;
             self.scratch_bits = 0;
         }
 
-        // do tails tuff
-        /*
-                   assert( GetAlignBits() == 0 );
-                   assert( m_bitsRead + bytes * 8 <= m_numBits );
-                   assert( ( m_bitsRead % 32 ) == 0 || ( m_bitsRead % 32 ) == 8 || ( m_bitsRead % 32 ) == 16 || ( m_bitsRead % 32 ) == 24 );
+        // -- Reading tail --
+        let tail_start = head_bytes + num_words * 4;
+        let tail_bytes = num_bytes - tail_start;
+        assert!(tail_bytes >= 0 && tail_bytes < 4);
 
-                   int headBytes = ( 4 - ( m_bitsRead % 32 ) / 8 ) % 4;
-                   if ( headBytes > bytes )
-                       headBytes = bytes;
-                   for ( int i = 0; i < headBytes; ++i )
-                       data[i] = (uint8_t) ReadBits( 8 );
-                   if ( headBytes == bytes )
-                       return;
+        for i in 0..tail_bytes {
+            bytes[(tail_start + i) as usize] = self.read_bits(8) as u8;
+        }
 
-                   assert( GetAlignBits() == 0 );
-
-                   int numWords = ( bytes - headBytes ) / 4;
-                   if ( numWords > 0 )
-                   {
-                       assert( ( m_bitsRead % 32 ) == 0 );
-                       memcpy( data + headBytes, &m_data[m_wordIndex], numWords * 4 );
-                       m_bitsRead += numWords * 32;
-                       m_wordIndex += numWords;
-                       m_scratchBits = 0;
-                   }
-
-                   assert( GetAlignBits() == 0 );
-
-                   int tailStart = headBytes + numWords * 4;
-                   int tailBytes = bytes - tailStart;
-                   assert( tailBytes >= 0 && tailBytes < 4 );
-                   for ( int i = 0; i < tailBytes; ++i )
-                       data[tailStart+i] = (uint8_t) ReadBits( 8 );
-
-                   assert( GetAlignBits() == 0 );
-
-                   assert( headBytes + numWords * 4 + tailBytes == bytes );
-        */
+        assert!(self.get_align_bits() == 0);
+        assert!(head_bytes + num_words * 4 + tail_bytes == num_bytes);
     }
 
     pub fn get_bits_read(&self) -> u32 {
@@ -379,12 +353,18 @@ mod tests {
             writer.write_bits(1000, 10);
             writer.write_bits(50000, 16);
             writer.write_bits(9999999, 32);
+            writer.write_align(); // Write align before writing bytes
+
+            let mut bytes: Vec<u8> = vec![5, 20, 255];
+            writer.write_bytes(&mut bytes, 3);
             writer.flush();
 
-            bits_written = 1 + 1 + 8 + 8 + 10 + 16 + 32; // 76
+            // All values + padding + bytes
+            bits_written = 1 + 1 + 8 + 8 + 10 + 16 + 32 + 4 + (bytes.len() as u32 * 8); // 76
+
             bytes_written = writer.get_bytes_written();
 
-            assert_eq!(10, bytes_written);
+            assert_eq!(bits_written / 8, bytes_written);
             assert_eq!(bits_written, writer.get_bits_written());
             // check( writer.GetTotalBytes() == BufferSize );
             // check( writer.GetBitsAvailable() == BufferSize * 8 - bitsWritten );
@@ -403,6 +383,10 @@ mod tests {
             let e = reader.read_bits(10);
             let f = reader.read_bits(16);
             let g = reader.read_bits(32);
+            reader.read_align();
+
+            let mut bytes: Vec<u8> = vec![0; 3];
+            reader.read_bytes(&mut bytes, 3);
 
             assert_eq!(a, 0);
             assert_eq!(b, 1);
@@ -411,6 +395,9 @@ mod tests {
             assert_eq!(e, 1000);
             assert_eq!(f, 50000);
             assert_eq!(g, 9999999);
+            assert_eq!(bytes[0], 5);
+            assert_eq!(bytes[1], 20);
+            assert_eq!(bytes[2], 255);
 
             assert_eq!(reader.get_bits_read(), bits_written);
             // Check that the bits remaining is equal to the padding remaining in the bytes written
