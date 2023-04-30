@@ -1,3 +1,7 @@
+use std::slice::from_raw_parts;
+
+use crate::protocol::{calculate_crc32, to_bytes};
+
 use super::streams::{ReadStream, Stream, WriteStream};
 
 const PACKET_BUFFER_SIZE: u32 = 256;
@@ -114,21 +118,23 @@ pub fn write_packet(
     assert!(buffer.len() > 0);
 
     let num_packet_types = info.packet_factory.get_num_packet_types();
+    let buffer_length = buffer.len();
+    let mut bytes_processed: u32 = 0;
     let mut stream = WriteStream::new(buffer, buffer.len());
 
+    let mut crc_32: u32 = 0;
     // stream.SetContext(info.context);
 
     // Serialize prefix bytes
-    // for _i in 0..info.prefix_bytes {
-    //     let mut zero: u32 = 0;
-    //     stream.serialize_bits(&mut zero, 8);
-    // }
+    for _i in 0..info.prefix_bytes {
+        let mut zero: u32 = 0;
+        stream.serialize_bits(&mut zero, 8);
+    }
 
-    // Serialize crc32
-    // let mut crc32: u32 = 0;
-    // if !info.raw_format {
-    //     stream.serialize_bits(&mut crc32, 32);
-    // }
+    // Serialize space for crc32, which we calculate at the end of writing the packet.
+    if !info.raw_format {
+        stream.serialize_bits(&mut crc_32, 32);
+    }
 
     // if (header)
     // {
@@ -140,12 +146,10 @@ pub fn write_packet(
     assert!(num_packet_types > 0);
 
     // If we have more than one packet type, serialize the packet type into the buffer?
-    if num_packet_types > 1 {
-        stream.serialise_int(&mut packet_type, 0, num_packet_types as i32);
-        println!("WROTE PACKET TYPE: {:?}", packet_type);
-    }
-
-    println!("{:?}", stream.writer.get_bits_written());
+    // if num_packet_types > 1 {
+    //     stream.serialise_int(&mut packet_type, 0, num_packet_types as i32);
+    //     println!("WROTE PACKET TYPE: {:?}", packet_type);
+    // }
 
     // Serialize the packet
     if !packet.serialize_internal_w(&mut stream) {
@@ -156,18 +160,46 @@ pub fn write_packet(
 
     stream.writer.flush();
 
+    bytes_processed = stream.get_bytes_processed();
+
+    // Borrow checker: can't reference stream past here
+
     if !info.raw_format {
-        // uint32_t network_protocolId = host_to_network(info.protocolId);
-        // crc32 = calculate_crc32((uint8_t *)&network_protocolId, 4);
-        // crc32 = calculate_crc32(buffer + info.prefixBytes, stream.GetBytesProcessed() - info.prefixBytes, crc32);
-        // *((uint32_t *)(buffer + info.prefixBytes)) = host_to_network(crc32);
+        // Get protocolID + buffer contents (starting after prefix bytes) as bytes
+        let bytes_written = stream.writer.get_bytes_written();
+
+        /*
+            [protocol_id] + [buffer] (minus prefix bytes);
+            Gives me a CRC. I add that to the packet.
+
+            On read, i get the CRC from the packet, and then calculate it again using the protocol ID.
+        */
+
+        unsafe {
+            // Pointer to buffer start + prefix bytes
+            let dest_ptr = (buffer.as_mut_ptr() as *mut u8).add(info.prefix_bytes as usize);
+            let protocol_bytes_temp = info.protocol_id.to_le_bytes();
+            let protocol_bytes = protocol_bytes_temp.as_slice();
+            let buffer_bytes =
+                from_raw_parts::<u8>(dest_ptr, buffer_length - info.prefix_bytes as usize);
+
+            let mut crc_bytes: Vec<u8> = vec![];
+            crc_bytes.extend_from_slice(protocol_bytes);
+            crc_bytes.extend_from_slice(buffer_bytes);
+
+            crc_32 = crc32fast::hash(&crc_bytes);
+            let src_ptr = crc_32.to_le_bytes().as_ptr();
+
+            // Write crc32 directly into buffer
+            std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, 4);
+        }
+
+        for i in 0..2 {
+            println!("WORD: {:#034b}", buffer[i]);
+        }
     }
 
-    // if (stream.GetError())
-    //     return 0;
-
-    // return stream
-    return stream.get_bytes_processed();
+    return bytes_processed;
 }
 
 /** TODO */
@@ -178,37 +210,58 @@ pub fn read_packet(
 ) -> Box<dyn Packet> {
     assert!(buffer.len() > 0);
 
-    for i in 0..3 {
-        println!("READ buffer: {:#034b}", buffer[i]);
-    }
-
     //if (errorCode)
     //*errorCode = PROTOCOL2_ERROR_NONE;
 
     let mut stream = ReadStream::new(buffer, buffer.len());
     // stream.SetContext(info.context);
 
-    // for i in 0..info.prefix_bytes {
-    //     let dummy: u32 = 0;
-    //     stream.serialize_bits(&mut dummy, 8);
-    // }
+    for i in 0..info.prefix_bytes {
+        let mut dummy: u32 = 0;
+        stream.serialize_bits(&mut dummy, 8);
+    }
 
-    let read_crc32 = 0;
-    if info.raw_format {
-        // uint32_t network_protocolId = host_to_network(info.protocolId);
-        // uint32_t crc32 = calculate_crc32((const uint8_t *)&network_protocolId, 4);
-        // uint32_t zero = 0;
-        // crc32 = calculate_crc32((const uint8_t *)&zero, 4, crc32);
-        // crc32 = calculate_crc32(buffer + info.prefixBytes + 4, bufferSize - 4 - info.prefixBytes, crc32);
+    let mut read_crc32 = 0;
+    if !info.raw_format {
+        stream.serialize_bits(&mut read_crc32, 32);
 
-        // if (crc32 != read_crc32)
-        // {
-        //     printf("corrupt packet. expected crc32 %x, got %x\n", crc32, read_crc32);
+        // On read, we skip prefix bytes
+        // Overwrite CRC with 0's
+        // Read the rest.
 
-        //     if (errorCode)
-        //         *errorCode = PROTOCOL2_ERROR_CRC32_MISMATCH;
-        //     return NULL;
-        // }
+        unsafe {
+            let src_ptr = (buffer.as_mut_ptr() as *mut u8).add(info.prefix_bytes as usize + 4);
+            let protocol_bytes_temp = info.protocol_id.to_le_bytes();
+            let protocol_bytes = protocol_bytes_temp.as_slice();
+            let buffer_bytes =
+                from_raw_parts::<u8>(src_ptr, buffer.len() - info.prefix_bytes as usize - 4);
+            let mut crc_bytes: Vec<u8> = vec![];
+            crc_bytes.extend_from_slice(protocol_bytes);
+            crc_bytes.extend_from_slice(&[0, 0, 0, 0]); // Fill in space that CRC32 was in
+            crc_bytes.extend_from_slice(buffer_bytes);
+
+            let crc_32 = crc32fast::hash(&crc_bytes);
+
+            assert_eq!(
+                read_crc32, crc_32,
+                "Corrupt packet. Expected {:?}, got {:?}",
+                read_crc32, crc_32
+            );
+            // if read_crc32 != crc_32 {
+            //     println!(
+            //         "Corrupt packet. Expected {:?}, got {:?}",
+            //         read_crc32, crc_32
+            //     );
+
+            //     /*
+            //                     if (errorCode)
+            //         *errorCode = PROTOCOL2_ERROR_CRC32_MISMATCH;
+            //     return NULL;
+            //      */
+
+            //     false
+            // }
+        }
     }
 
     // if (header)
@@ -222,33 +275,33 @@ pub fn read_packet(
     // }
 
     let mut packet_type: u32 = 0;
-    let num_packet_types = info.packet_factory.get_num_packet_types();
+    // let num_packet_types = info.packet_factory.get_num_packet_types();
 
-    assert!(num_packet_types > 0);
+    // assert!(num_packet_types > 0);
 
-    if num_packet_types > 1 {
-        let mut temp_packet_type: i32 = 0;
-        if !stream.serialise_int(&mut temp_packet_type, 0, num_packet_types as i32) {}
-        packet_type = temp_packet_type as u32;
-        // if (!stream.SerializeInteger(packetType, 0, numPacketTypes - 1))
-        // {
-        //     if (errorCode)
-        //         *errorCode = PROTOCOL2_ERROR_IN&mut packet_type;
-        //     return NULL;
-        // }
-        println!("READ PACKET TYPE: {:?}", packet_type);
-    }
+    // if num_packet_types > 1 {
+    //     let mut temp_packet_type: i32 = 0;
+    //     if !stream.serialise_int(&mut temp_packet_type, 0, num_packet_types as i32) {}
+    //     packet_type = temp_packet_type as u32;
+    //     // if (!stream.SerializeInteger(packetType, 0, numPacketTypes - 1))
+    //     // {
+    //     //     if (errorCode)
+    //     //         *errorCode = PROTOCOL2_ERROR_IN&mut packet_type;
+    //     //     return NULL;
+    //     // }
+    //     // println!("READ PACKET TYPE: {:?}", packet_type);
+    // }
 
-    if info.allowed_packet_types.contains(&packet_type) {
-        // if (errorCode)
-        //  *errorCode = PROTOCOL2_ERROR_PACKET_TYPE_NOT_ALLOWED;
-    }
+    // if info.allowed_packet_types.contains(&packet_type) {
+    //     // if (errorCode)
+    //     //  *errorCode = PROTOCOL2_ERROR_PACKET_TYPE_NOT_ALLOWED;
+    // }
 
     let mut packet = info.packet_factory.create_packet(packet_type);
 
-    if !packet.serialize_internal_r(&mut stream) {
-        println!("Failed to serialize read")
-    }
+    // if !packet.serialize_internal_r(&mut stream) {
+    //     println!("Failed to serialize read")
+    // }
 
     // if !packet.serialize_internal_r(&mut stream) {
     //  if (errorCode)
@@ -259,6 +312,10 @@ pub fn read_packet(
     //     info.packetFactory->DestroyPacket(packet);
     //     return NULL;
     // }
+
+    for i in 0..2 {
+        println!("WORD: {:#034b}", buffer[i]);
+    }
 
     packet
 }

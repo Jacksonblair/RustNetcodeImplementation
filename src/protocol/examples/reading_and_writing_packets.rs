@@ -23,12 +23,6 @@
     - Write packet does not care about the packet type, it just creates a write_stream and calls the packet.serialize_w method with the correct args.
 */
 
-/*
-    LAST TIME ON BUILDING A NETWORK PROTOCOL:
-    - We realized that some of our serializations didnt work, and decided to write test cases for them. We need to finish all the test cases before continuing, so we know when that shit breaks.
-
-*/
-
 const MAX_PACKET_SIZE: usize = 1024;
 
 use rand::random;
@@ -37,7 +31,7 @@ use std::fmt::Write;
 use crate::{
     impl_object_for_packet,
     protocol::{
-        packets::{Object, Packet, PacketFactory},
+        packets::{self, read_packet, Object, Packet, PacketFactory, PacketInfo},
         serialization::{
             read_object_index_macro, serialize_float_macro, serialize_int_macro,
             write_object_index_macro, MAX_OBJECTS,
@@ -46,7 +40,7 @@ use crate::{
     },
 };
 
-const NUM_ITERATIONS: u32 = 16;
+const NUM_ITERATIONS: u32 = 5;
 
 #[derive(Debug, PartialEq)]
 pub struct TestObject {
@@ -106,7 +100,7 @@ impl TestPacketB {
     fn new() -> TestPacketB {
         TestPacketB {
             scene: SceneA {
-                objects: (0..10)
+                objects: (0..100)
                     .map(|_| TestObject {
                         send: random::<bool>(),
                         a: random::<i32>(),
@@ -206,104 +200,72 @@ impl PacketFactory for TestPacketFactory {
 
 #[test]
 pub fn test() {
-    // return;
-    let mut buffer: Vec<u32> = vec![0; MAX_PACKET_SIZE];
+    let packet_factory = TestPacketFactory {
+        num_allocated_packets: 0,
+        num_packet_types: TestPacketTypes::NUM_TYPES as u32,
+    };
 
-    let mut write_stream = WriteStream::new(&mut buffer, MAX_PACKET_SIZE);
-    let mut write_packet = TestPacketB::new();
-    write_packet.serialize_internal_w(&mut write_stream);
-    write_stream.writer.flush();
+    for _i in 0..NUM_ITERATIONS {
+        let packet_type = random::<u32>() % TestPacketTypes::NUM_TYPES as u32;
+        let mut write_packet: Box<dyn Packet> = packet_factory.create_packet(packet_type);
 
-    let mut read_stream = ReadStream::new(&mut buffer, MAX_PACKET_SIZE);
-    let mut read_packet = TestPacketB::new();
-    read_packet.serialize_internal_r(&mut read_stream);
+        assert!(write_packet.get_packet_type() == packet_type);
 
-    // Assert that all items we sent now have equal values
-    for (i, val) in write_packet.scene.objects.iter().enumerate() {
-        if val.send {
-            assert!(read_packet.scene.objects[i].a == val.a);
+        let mut buffer: Vec<u32> = vec![0; MAX_PACKET_SIZE];
+        let mut error = false;
+
+        let info: PacketInfo = PacketInfo {
+            raw_format: false,
+            prefix_bytes: 1,
+            protocol_id: u32::MAX,
+            allowed_packet_types: vec![],
+            packet_factory: &packet_factory,
+        };
+
+        let bytes_written = packets::write_packet(&info, write_packet.as_mut(), &mut buffer);
+
+        if bytes_written > 0 {
+            println!(
+                "Wrote packet type {} ({} bytes)",
+                write_packet.get_packet_type(),
+                bytes_written
+            );
+        } else {
+            println!("Write packet error. Didnt write any bytes.");
+            error = true;
         }
+
+        let read_packet = read_packet(&info, &mut buffer);
+        println!(
+            "Read packet type {} ({} bytes)",
+            read_packet.get_packet_type(),
+            bytes_written
+        );
+
+        /*
+                memset( readBuffer, 0, sizeof( readBuffer ) );
+                memcpy( readBuffer, writeBuffer, bytesWritten );
+
+                int readError;
+
+                protocol2::Packet *readPacket = protocol2::ReadPacket( info, readBuffer, bytesWritten, NULL, &readError );
+
+                if ( readPacket )
+                {
+                    printf( "read packet type %d (%d bytes)\n", readPacket->GetType(), bytesWritten );
+                }
+                else
+                {
+                    printf( "read packet error: %s\n", protocol2::GetErrorString( readError ) );
+
+                    error = true;
+                }
+
+                packetFactory.DestroyPacket( readPacket );
+                packetFactory.DestroyPacket( writePacket );
+
+                if ( error )
+                    return 1;
+        */
     }
-
-    // println!("Reading and writing packets\n\n");
-
-    // let packet_factory = TestPacketFactory {
-    //     num_allocated_packets: 0,
-    //     num_packet_types: TestPacketTypes::NUM_TYPES as u32,
-    // };
-
-    // for _i in 0..NUM_ITERATIONS {
-    //     let packet_type = random::<u32>() % TestPacketTypes::NUM_TYPES as u32;
-    //     let mut write_packet = packet_factory.create_packet(packet_type);
-
-    //     assert!(write_packet.get_packet_type() == packet_type);
-
-    //     let mut buffer: Vec<u32> = vec![0; MAX_PACKET_SIZE];
-    //     let mut error = false;
-
-    //     let info: PacketInfo = PacketInfo {
-    //         raw_format: false,
-    //         prefix_bytes: 1,
-    //         protocol_id: 12345,
-    //         allowed_packet_types: vec![],
-    //         packet_factory: &packet_factory,
-    //     };
-
-    //     let bytes_written = packets::write_packet(&info, write_packet.as_mut(), &mut buffer);
-
-    //     for i in 0..3 {
-    //         println!("Write buffer: {:#034b}", buffer[i]);
-    //     }
-
-    //     if bytes_written > 0 {
-    //         println!(
-    //             "Wrote packet type {} ({} bytes)\n",
-    //             write_packet.get_packet_type(),
-    //             bytes_written
-    //         );
-    //     } else {
-    //         println!("Write packet error. Didnt write any bytes.");
-    //         error = true;
-    //     }
-
-    //     // for i in 0..5 {
-    //     //     println!("Write buffer: {:#034b}", write_buffer[i]);
-    //     // }
-
-    //     let read_packet = read_packet(&info, &mut buffer);
-
-    //     println!(
-    //         "Read packet type {} ({} bytes)",
-    //         read_packet.get_packet_type(),
-    //         bytes_written
-    //     );
-
-    //     println!("\n");
-
-    /*
-            memset( readBuffer, 0, sizeof( readBuffer ) );
-            memcpy( readBuffer, writeBuffer, bytesWritten );
-
-            int readError;
-
-            protocol2::Packet *readPacket = protocol2::ReadPacket( info, readBuffer, bytesWritten, NULL, &readError );
-
-            if ( readPacket )
-            {
-                printf( "read packet type %d (%d bytes)\n", readPacket->GetType(), bytesWritten );
-            }
-            else
-            {
-                printf( "read packet error: %s\n", protocol2::GetErrorString( readError ) );
-
-                error = true;
-            }
-
-            packetFactory.DestroyPacket( readPacket );
-            packetFactory.DestroyPacket( writePacket );
-
-            if ( error )
-                return 1;
-    */
-    // }
 }

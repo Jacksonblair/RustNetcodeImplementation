@@ -20,11 +20,11 @@ macro_rules! impl_object_for_packet {
     ($t:ident) => {
         impl Object for $t {
             fn serialize_internal_r(&mut self, stream: &mut ReadStream) -> bool {
-                println!("MACRO: READING PACKET");
+                // println!("MACRO: READING PACKET");
                 self.serialize(stream)
             }
             fn serialize_internal_w(&mut self, stream: &mut WriteStream) -> bool {
-                println!("MACRO: WRITING PACKET");
+                // println!("MACRO: WRITING PACKET");
                 self.serialize(stream)
             }
         }

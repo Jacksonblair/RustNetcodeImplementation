@@ -324,7 +324,7 @@ pub fn serialize_object_index_internal(
     if three_bits {
         serialize_int_macro(stream, &mut difference, 6, 13);
         if stream.is_reading() {
-            *current = *previous - difference;
+            *current = *previous + difference;
         }
         *previous = *current;
         return true;
@@ -375,7 +375,6 @@ pub fn serialize_object_index_internal(
         return true;
     }
 
-    // [126, MAX_OBJECTS+1]
     serialize_int_macro(stream, &mut difference, 126, (MAX_OBJECTS + 1) as i32);
 
     if stream.is_reading() {
