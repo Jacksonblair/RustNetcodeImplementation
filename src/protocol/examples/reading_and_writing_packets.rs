@@ -40,7 +40,7 @@ use crate::{
     },
 };
 
-const NUM_ITERATIONS: u32 = 5;
+const NUM_ITERATIONS: u32 = 10000;
 
 #[derive(Debug, PartialEq)]
 pub struct TestObject {

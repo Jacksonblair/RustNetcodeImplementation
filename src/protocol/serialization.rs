@@ -8,6 +8,11 @@ use super::{packets::Object, streams::Stream};
 
 pub const MAX_OBJECTS: u32 = 1024;
 
+/** Serialize a known 32 bit value */
+pub fn serialize_check(stream: &mut dyn Stream, string: &mut String) -> bool {
+    return stream.serialize_check(string);
+}
+
 pub fn serialize_object(stream: &mut dyn Stream, object: &mut dyn Object) -> bool {
     // return object.serialize(stream);
     true
@@ -543,7 +548,7 @@ mod tests {
             serialize_bool_macro(stream, &mut self.data.test_bool);
             serialize_float_macro(stream, &mut self.data.test_float);
 
-            // serialize_check( stream, "test object serialize check" );
+            serialize_check(stream, &mut String::from("test object serialize check"));
 
             serialize_string_macro(stream, &mut self.data.test_string, 100);
             serialize_u64_macro(stream, &mut self.data.test_u64);
@@ -561,8 +566,7 @@ mod tests {
             let num_bytes = self.data.bytes.len() as u32;
             serialize_bytes_macro(stream, &mut self.data.bytes, num_bytes);
 
-            // serialize_check( stream, "end of test object" );
-
+            serialize_check(stream, &mut String::from("end of test object"));
             return true;
         }
     }

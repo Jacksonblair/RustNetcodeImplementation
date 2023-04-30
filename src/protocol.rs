@@ -1,3 +1,8 @@
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+};
+
 pub mod bitpacker;
 pub mod examples;
 pub mod macros;
@@ -85,4 +90,11 @@ pub fn to_bytes(input: &[u32]) -> Vec<u8> {
     }
 
     bytes
+}
+
+pub fn hash_string(input: &mut String) -> u32 {
+    let mut hasher = DefaultHasher::new();
+    let magic = input.hash(&mut hasher);
+    let mut hash = hasher.finish();
+    return hash as u32;
 }

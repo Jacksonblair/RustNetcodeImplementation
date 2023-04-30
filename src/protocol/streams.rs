@@ -1,6 +1,11 @@
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+};
+
 use super::{
     bitpacker::{BitReader, BitWriter},
-    ProtocolError,
+    hash_string, ProtocolError,
 };
 use crate::bits_required;
 
@@ -11,6 +16,7 @@ pub trait Stream {
     fn serialize_bits(&mut self, value: &mut u32, bits: u32) -> bool;
     fn serialize_align(&mut self) -> bool;
     fn serialize_bytes(&mut self, bytes: &mut Vec<u8>, num_bytes: u32) -> bool;
+    fn serialize_check(&mut self, hash: &mut String) -> bool;
     fn get_bytes_processed(&mut self) -> u32;
     fn get_error(&mut self) -> ProtocolError;
 }
@@ -77,6 +83,13 @@ impl<'a> Stream for WriteStream<'a> {
 
     fn serialize_align(&mut self) -> bool {
         return self.writer.write_align();
+    }
+
+    fn serialize_check(&mut self, string: &mut String) -> bool {
+        self.serialize_align();
+        let mut hash = hash_string(string);
+        self.serialize_bits(&mut hash, 32);
+        true
     }
 
     fn get_bytes_processed(&mut self) -> u32 {
@@ -152,6 +165,23 @@ impl<'a> Stream for ReadStream<'a> {
 
     fn serialize_align(&mut self) -> bool {
         return self.reader.read_align();
+    }
+
+    fn serialize_check(&mut self, string: &mut String) -> bool {
+        self.serialize_align();
+        let mut val: u32 = 0;
+        self.serialize_bits(&mut val, 32);
+        let magic = hash_string(string);
+
+        if magic != val {
+            println!(
+                "Serialize check failed: {:?}. Expected {:?}, got {:?}",
+                string, magic, val
+            );
+            return magic == val;
+        }
+
+        true
     }
 
     fn get_bytes_processed(&mut self) -> u32 {

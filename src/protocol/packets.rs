@@ -41,7 +41,6 @@ pub trait Object {
     fn serialize_internal_w(&mut self, stream: &mut WriteStream) -> bool;
 }
 
-/** TODO */
 pub trait Packet: Object {
     fn get_packet_type(&self) -> u32;
 }
@@ -146,17 +145,16 @@ pub fn write_packet(
     assert!(num_packet_types > 0);
 
     // If we have more than one packet type, serialize the packet type into the buffer?
-    // if num_packet_types > 1 {
-    //     stream.serialise_int(&mut packet_type, 0, num_packet_types as i32);
-    //     println!("WROTE PACKET TYPE: {:?}", packet_type);
-    // }
+    if num_packet_types > 1 {
+        stream.serialise_int(&mut packet_type, 0, num_packet_types as i32);
+    }
 
     // Serialize the packet
     if !packet.serialize_internal_w(&mut stream) {
         return 0;
     }
 
-    // stream.SerializeCheck("end of packet");
+    stream.serialize_check(&mut String::from("end of packet"));
 
     stream.writer.flush();
 
@@ -193,16 +191,11 @@ pub fn write_packet(
             // Write crc32 directly into buffer
             std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, 4);
         }
-
-        for i in 0..2 {
-            println!("WORD: {:#034b}", buffer[i]);
-        }
     }
 
     return bytes_processed;
 }
 
-/** TODO */
 pub fn read_packet(
     info: &PacketInfo,
     buffer: &mut Vec<u32>,
@@ -212,15 +205,17 @@ pub fn read_packet(
 
     //if (errorCode)
     //*errorCode = PROTOCOL2_ERROR_NONE;
-
+    let buffer_ptr = buffer.as_ptr() as *mut u8;
+    let buffer_length = buffer.len();
     let mut stream = ReadStream::new(buffer, buffer.len());
     // stream.SetContext(info.context);
 
-    for i in 0..info.prefix_bytes {
+    for _i in 0..info.prefix_bytes {
         let mut dummy: u32 = 0;
         stream.serialize_bits(&mut dummy, 8);
     }
 
+    // TODO: Move crc32 stuff into functions.
     let mut read_crc32 = 0;
     if !info.raw_format {
         stream.serialize_bits(&mut read_crc32, 32);
@@ -230,11 +225,11 @@ pub fn read_packet(
         // Read the rest.
 
         unsafe {
-            let src_ptr = (buffer.as_mut_ptr() as *mut u8).add(info.prefix_bytes as usize + 4);
+            let src_ptr = buffer_ptr.add(info.prefix_bytes as usize + 4);
             let protocol_bytes_temp = info.protocol_id.to_le_bytes();
             let protocol_bytes = protocol_bytes_temp.as_slice();
             let buffer_bytes =
-                from_raw_parts::<u8>(src_ptr, buffer.len() - info.prefix_bytes as usize - 4);
+                from_raw_parts::<u8>(src_ptr, buffer_length - info.prefix_bytes as usize - 4);
             let mut crc_bytes: Vec<u8> = vec![];
             crc_bytes.extend_from_slice(protocol_bytes);
             crc_bytes.extend_from_slice(&[0, 0, 0, 0]); // Fill in space that CRC32 was in
@@ -247,20 +242,6 @@ pub fn read_packet(
                 "Corrupt packet. Expected {:?}, got {:?}",
                 read_crc32, crc_32
             );
-            // if read_crc32 != crc_32 {
-            //     println!(
-            //         "Corrupt packet. Expected {:?}, got {:?}",
-            //         read_crc32, crc_32
-            //     );
-
-            //     /*
-            //                     if (errorCode)
-            //         *errorCode = PROTOCOL2_ERROR_CRC32_MISMATCH;
-            //     return NULL;
-            //      */
-
-            //     false
-            // }
         }
     }
 
@@ -275,22 +256,21 @@ pub fn read_packet(
     // }
 
     let mut packet_type: u32 = 0;
-    // let num_packet_types = info.packet_factory.get_num_packet_types();
+    let num_packet_types = info.packet_factory.get_num_packet_types();
+    assert!(num_packet_types > 0);
 
-    // assert!(num_packet_types > 0);
-
-    // if num_packet_types > 1 {
-    //     let mut temp_packet_type: i32 = 0;
-    //     if !stream.serialise_int(&mut temp_packet_type, 0, num_packet_types as i32) {}
-    //     packet_type = temp_packet_type as u32;
-    //     // if (!stream.SerializeInteger(packetType, 0, numPacketTypes - 1))
-    //     // {
-    //     //     if (errorCode)
-    //     //         *errorCode = PROTOCOL2_ERROR_IN&mut packet_type;
-    //     //     return NULL;
-    //     // }
-    //     // println!("READ PACKET TYPE: {:?}", packet_type);
-    // }
+    if num_packet_types > 1 {
+        let mut temp_packet_type: i32 = 0;
+        if !stream.serialise_int(&mut temp_packet_type, 0, num_packet_types as i32) {}
+        packet_type = temp_packet_type as u32;
+        // if (!stream.SerializeInteger(packetType, 0, numPacketTypes - 1))
+        // {
+        //     if (errorCode)
+        //         *errorCode = PROTOCOL2_ERROR_IN&mut packet_type;
+        //     return NULL;
+        // }
+        // println!("READ PACKET TYPE: {:?}", packet_type);
+    }
 
     // if info.allowed_packet_types.contains(&packet_type) {
     //     // if (errorCode)
@@ -299,9 +279,18 @@ pub fn read_packet(
 
     let mut packet = info.packet_factory.create_packet(packet_type);
 
-    // if !packet.serialize_internal_r(&mut stream) {
-    //     println!("Failed to serialize read")
-    // }
+    if !packet.serialize_internal_r(&mut stream) {
+        println!("Failed to serialize read")
+    }
+
+    if !stream.serialize_check(&mut String::from("end of packet")) {
+        println!("Ruh roh");
+        /*
+                   if (errorCode)
+               *errorCode = PROTOCOL2_ERROR_SERIALIZE_CHECK_FAILED;
+           goto cleanup;
+        */
+    }
 
     // if !packet.serialize_internal_r(&mut stream) {
     //  if (errorCode)
@@ -312,10 +301,6 @@ pub fn read_packet(
     //     info.packetFactory->DestroyPacket(packet);
     //     return NULL;
     // }
-
-    for i in 0..2 {
-        println!("WORD: {:#034b}", buffer[i]);
-    }
 
     packet
 }
