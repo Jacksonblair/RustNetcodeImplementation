@@ -31,12 +31,14 @@ use std::fmt::Write;
 use crate::{
     impl_object_for_packet,
     protocol::{
-        packets::{self, read_packet, Object, Packet, PacketFactory, PacketInfo},
+        get_error_string,
+        packets::{self, read_packet, Object, Packet, PacketFactory, PacketInfo, PacketTypes},
         serialization::{
             read_object_index_macro, serialize_float_macro, serialize_int_macro,
             write_object_index_macro, MAX_OBJECTS,
         },
         streams::{ReadStream, Stream, WriteStream},
+        ProtocolError,
     },
 };
 
@@ -54,9 +56,9 @@ pub struct SceneA {
 }
 
 enum TestPacketTypes {
-    A,
-    B,
-    NUM_TYPES,
+    A = 0,
+    B = 1,
+    NumTypes = 2,
 }
 
 #[derive(Debug)]
@@ -202,27 +204,27 @@ impl PacketFactory for TestPacketFactory {
 pub fn test() {
     let packet_factory = TestPacketFactory {
         num_allocated_packets: 0,
-        num_packet_types: TestPacketTypes::NUM_TYPES as u32,
+        num_packet_types: TestPacketTypes::NumTypes as u32,
     };
 
     for _i in 0..NUM_ITERATIONS {
-        let packet_type = random::<u32>() % TestPacketTypes::NUM_TYPES as u32;
+        let packet_type = random::<u32>() % TestPacketTypes::NumTypes as u32;
         let mut write_packet: Box<dyn Packet> = packet_factory.create_packet(packet_type);
 
         assert!(write_packet.get_packet_type() == packet_type);
 
         let mut buffer: Vec<u32> = vec![0; MAX_PACKET_SIZE];
-        let mut error = false;
+        let mut error: bool = false;
 
         let info: PacketInfo = PacketInfo {
             raw_format: false,
-            prefix_bytes: 1,
+            prefix_bytes: 4,
             protocol_id: u32::MAX,
-            allowed_packet_types: vec![],
+            allowed_packet_types: vec![TestPacketTypes::A as u32, TestPacketTypes::B as u32],
             packet_factory: &packet_factory,
         };
 
-        let bytes_written = packets::write_packet(&info, write_packet.as_mut(), &mut buffer);
+        let bytes_written = packets::write_packet(&info, write_packet.as_mut(), &mut buffer, None);
 
         if bytes_written > 0 {
             println!(
@@ -235,37 +237,19 @@ pub fn test() {
             error = true;
         }
 
-        let read_packet = read_packet(&info, &mut buffer);
-        println!(
-            "Read packet type {} ({} bytes)",
-            read_packet.get_packet_type(),
-            bytes_written
-        );
-
-        /*
-                memset( readBuffer, 0, sizeof( readBuffer ) );
-                memcpy( readBuffer, writeBuffer, bytesWritten );
-
-                int readError;
-
-                protocol2::Packet *readPacket = protocol2::ReadPacket( info, readBuffer, bytesWritten, NULL, &readError );
-
-                if ( readPacket )
-                {
-                    printf( "read packet type %d (%d bytes)\n", readPacket->GetType(), bytesWritten );
-                }
-                else
-                {
-                    printf( "read packet error: %s\n", protocol2::GetErrorString( readError ) );
-
-                    error = true;
-                }
-
-                packetFactory.DestroyPacket( readPacket );
-                packetFactory.DestroyPacket( writePacket );
-
-                if ( error )
-                    return 1;
-        */
+        let mut error: ProtocolError = ProtocolError::None;
+        let read_packet = read_packet(&info, &mut buffer, None, &mut error);
+        match read_packet {
+            Some(packet) => {
+                println!(
+                    "Read packet type {} ({} bytes)",
+                    packet.get_packet_type(),
+                    bytes_written
+                );
+            }
+            None => {
+                println!("Packet read error {:?}", get_error_string(error));
+            }
+        }
     }
 }

@@ -10,10 +10,16 @@ pub mod packets;
 pub mod serialization;
 pub mod streams;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum ProtocolError {
-    None,
-    StreamOverflow,
+    None = 0,
+    StreamOverflow = 1,
+    SerializeHeaderFailed = 2,
+    InvalidPacketType = 3,
+    PacketTypeNotAllowed = 4,
+    CreatePacketFailed = 5,
+    SerializePacketFailed = 6,
+    SerializeCheckFailed = 7,
 }
 
 const CRC32_TABLE: [u32; 256] = [
@@ -71,14 +77,16 @@ pub fn calculate_crc32(buffer: &[u8], length: u32, crc_32: u32) -> u32 {
 */
 
 /** Prints out text representation of ProtocolError enum */
-pub fn get_error_string(error: ProtocolError) {
+pub fn get_error_string(error: ProtocolError) -> &'static str {
     match error {
-        ProtocolError::None => {
-            println!("No error")
-        }
-        ProtocolError::StreamOverflow => {
-            println!("Stream overflow")
-        }
+        ProtocolError::None => return "No error",
+        ProtocolError::StreamOverflow => return "Stream overflow",
+        ProtocolError::SerializeHeaderFailed => return "Failed to serialize header",
+        ProtocolError::CreatePacketFailed => return "Failed to create packet",
+        ProtocolError::InvalidPacketType => return "Invalid packet type",
+        ProtocolError::PacketTypeNotAllowed => return "Packet type not allowed",
+        ProtocolError::SerializeCheckFailed => return "Serialize check failed",
+        ProtocolError::SerializePacketFailed => return "Serialize packet failed",
     }
 }
 

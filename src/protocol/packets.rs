@@ -1,6 +1,6 @@
 use std::slice::from_raw_parts;
 
-use crate::protocol::{calculate_crc32, to_bytes};
+use crate::protocol::{calculate_crc32, to_bytes, ProtocolError};
 
 use super::streams::{ReadStream, Stream, WriteStream};
 
@@ -112,13 +112,13 @@ pub fn write_packet(
     info: &PacketInfo,
     packet: &mut dyn Packet,
     buffer: &mut Vec<u32>,
-    // header: &mut dyn Object,
+    header: Option<&mut dyn Object>,
 ) -> u32 {
     assert!(buffer.len() > 0);
+    assert!(buffer.len() <= MAX_PACKET_SIZE as usize);
 
     let num_packet_types = info.packet_factory.get_num_packet_types();
     let buffer_length = buffer.len();
-    let mut bytes_processed: u32 = 0;
     let mut stream = WriteStream::new(buffer, buffer.len());
 
     let mut crc_32: u32 = 0;
@@ -135,11 +135,13 @@ pub fn write_packet(
         stream.serialize_bits(&mut crc_32, 32);
     }
 
-    // if (header)
-    // {
-    //     if (!header->SerializeInternal(stream))
-    //         return 0;
-    // }
+    // Write header if there is one
+    match header {
+        Some(header) => {
+            header.serialize_internal_w(&mut stream);
+        }
+        _ => (),
+    }
 
     let mut packet_type = packet.get_packet_type() as i32;
     assert!(num_packet_types > 0);
@@ -155,24 +157,15 @@ pub fn write_packet(
     }
 
     stream.serialize_check(&mut String::from("end of packet"));
-
     stream.writer.flush();
+    let bytes_processed = stream.get_bytes_processed();
 
-    bytes_processed = stream.get_bytes_processed();
+    if ProtocolError::None != stream.get_error() {
+        return 0;
+    }
 
-    // Borrow checker: can't reference stream past here
-
+    // Write crc32 into packet
     if !info.raw_format {
-        // Get protocolID + buffer contents (starting after prefix bytes) as bytes
-        let bytes_written = stream.writer.get_bytes_written();
-
-        /*
-            [protocol_id] + [buffer] (minus prefix bytes);
-            Gives me a CRC. I add that to the packet.
-
-            On read, i get the CRC from the packet, and then calculate it again using the protocol ID.
-        */
-
         unsafe {
             // Pointer to buffer start + prefix bytes
             let dest_ptr = (buffer.as_mut_ptr() as *mut u8).add(info.prefix_bytes as usize);
@@ -199,12 +192,15 @@ pub fn write_packet(
 pub fn read_packet(
     info: &PacketInfo,
     buffer: &mut Vec<u32>,
-    // header: &mut dyn Object,
-) -> Box<dyn Packet> {
+    header: Option<&mut dyn Object>,
+    error: &mut ProtocolError,
+) -> Option<Box<dyn Packet>> {
     assert!(buffer.len() > 0);
 
-    //if (errorCode)
-    //*errorCode = PROTOCOL2_ERROR_NONE;
+    if *error != ProtocolError::None {
+        *error = ProtocolError::None;
+    }
+
     let buffer_ptr = buffer.as_ptr() as *mut u8;
     let buffer_length = buffer.len();
     let mut stream = ReadStream::new(buffer, buffer.len());
@@ -239,21 +235,22 @@ pub fn read_packet(
 
             assert_eq!(
                 read_crc32, crc_32,
-                "Corrupt packet. Expected {:?}, got {:?}",
+                "Corrupt packet. Expected CRC32: {:?}, got CRC32: {:?}",
                 read_crc32, crc_32
             );
         }
     }
 
-    // if (header)
-    // {
-    //     if (!header->SerializeInternal(stream))
-    //     {
-    //         if (errorCode)
-    //             *errorCode = PROTOCOL2_ERROR_SERIALIZE_HEADER_FAILED;
-    //         return NULL;
-    //     }
-    // }
+    match header {
+        Some(header) => {
+            if !header.serialize_internal_r(&mut stream) {
+                if *error != ProtocolError::None {
+                    *error = ProtocolError::SerializeHeaderFailed
+                }
+            }
+        }
+        None => (),
+    }
 
     let mut packet_type: u32 = 0;
     let num_packet_types = info.packet_factory.get_num_packet_types();
@@ -261,48 +258,46 @@ pub fn read_packet(
 
     if num_packet_types > 1 {
         let mut temp_packet_type: i32 = 0;
-        if !stream.serialise_int(&mut temp_packet_type, 0, num_packet_types as i32) {}
+        if !stream.serialise_int(&mut temp_packet_type, 0, num_packet_types as i32) {
+            if *error != ProtocolError::None {
+                *error = ProtocolError::InvalidPacketType;
+                return None;
+            }
+        }
         packet_type = temp_packet_type as u32;
-        // if (!stream.SerializeInteger(packetType, 0, numPacketTypes - 1))
-        // {
-        //     if (errorCode)
-        //         *errorCode = PROTOCOL2_ERROR_IN&mut packet_type;
-        //     return NULL;
-        // }
-        // println!("READ PACKET TYPE: {:?}", packet_type);
     }
 
-    // if info.allowed_packet_types.contains(&packet_type) {
-    //     // if (errorCode)
-    //     //  *errorCode = PROTOCOL2_ERROR_PACKET_TYPE_NOT_ALLOWED;
-    // }
+    if !info.allowed_packet_types.contains(&packet_type) {
+        if *error == ProtocolError::None {
+            *error = ProtocolError::PacketTypeNotAllowed;
+        }
+        return None;
+    }
 
     let mut packet = info.packet_factory.create_packet(packet_type);
 
     if !packet.serialize_internal_r(&mut stream) {
-        println!("Failed to serialize read")
+        if *error == ProtocolError::None {
+            *error = ProtocolError::SerializePacketFailed;
+        }
+        // info.packetFactory->DestroyPacket(packet);
     }
 
     if !stream.serialize_check(&mut String::from("end of packet")) {
-        println!("Ruh roh");
-        /*
-                   if (errorCode)
-               *errorCode = PROTOCOL2_ERROR_SERIALIZE_CHECK_FAILED;
-           goto cleanup;
-        */
+        if *error == ProtocolError::None {
+            *error = ProtocolError::SerializeCheckFailed;
+        }
+        // info.packetFactory->DestroyPacket(packet);
     }
 
-    // if !packet.serialize_internal_r(&mut stream) {
-    //  if (errorCode)
-    //      *errorCode = PROTOCOL2_ERROR_SERIALIZE_PACKET_FAILED;
-    //      goto cleanup;
-    // }
-    // cleanup:
-    //     info.packetFactory->DestroyPacket(packet);
-    //     return NULL;
-    // }
+    if stream.get_error() != ProtocolError::None {
+        if *error == ProtocolError::None {
+            *error = stream.get_error();
+        }
+        // info.packetFactory->DestroyPacket(packet);
+    }
 
-    packet
+    return Some(packet);
 }
 
 mod tests {}

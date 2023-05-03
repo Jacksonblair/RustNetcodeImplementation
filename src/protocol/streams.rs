@@ -129,6 +129,7 @@ impl<'a> Stream for ReadStream<'a> {
         let bits = bits_required!(min, max);
 
         if self.reader.would_read_past_end(bits) {
+            self.error = ProtocolError::StreamOverflow;
             return false;
         }
 
@@ -142,6 +143,7 @@ impl<'a> Stream for ReadStream<'a> {
         assert!(bits > 0);
         assert!(bits <= 32);
         if self.reader.would_read_past_end(bits) {
+            self.error = ProtocolError::StreamOverflow;
             return false;
         }
         *value = self.reader.read_bits(bits);
@@ -164,6 +166,11 @@ impl<'a> Stream for ReadStream<'a> {
     }
 
     fn serialize_align(&mut self) -> bool {
+        let align_bits = self.reader.get_align_bits();
+        if self.reader.would_read_past_end(align_bits) {
+            self.error = ProtocolError::StreamOverflow;
+            return false;
+        }
         return self.reader.read_align();
     }
 
