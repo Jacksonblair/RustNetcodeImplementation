@@ -304,7 +304,7 @@ impl BitReader<'_> {
         // -- Reading tail --
         let tail_start = head_bytes + num_words * 4;
         let tail_bytes = num_bytes - tail_start;
-        assert!(tail_bytes >= 0 && tail_bytes < 4);
+        assert!(tail_bytes < 4);
 
         for i in 0..tail_bytes {
             bytes[(tail_start + i) as usize] = self.read_bits(8) as u8;

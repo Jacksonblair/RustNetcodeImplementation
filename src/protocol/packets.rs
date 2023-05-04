@@ -63,6 +63,18 @@ pub struct PacketInfo<'a> {
                                                // context: Something??                 // context for the packet serialization (optional, pass in NULL)
 }
 
+impl PacketInfo<'_> {
+    pub fn new(packet_factory: &dyn PacketFactory) -> PacketInfo {
+        return PacketInfo {
+            raw_format: false,
+            prefix_bytes: 0,
+            protocol_id: 0,
+            allowed_packet_types: vec![],
+            packet_factory,
+        };
+    }
+}
+
 /** TODO */
 struct PacketBufferEntry {
     sequence: u32,           // packet sequence number
@@ -112,10 +124,11 @@ pub fn write_packet(
     info: &PacketInfo,
     packet: &mut dyn Packet,
     buffer: &mut Vec<u32>,
+    buffer_length: usize,
     header: Option<&mut dyn Object>,
 ) -> u32 {
     assert!(buffer.len() > 0);
-    assert!(buffer.len() <= MAX_PACKET_SIZE as usize);
+    assert!(buffer.len() <= buffer_length);
 
     let num_packet_types = info.packet_factory.get_num_packet_types();
     let buffer_length = buffer.len();

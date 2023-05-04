@@ -31,15 +31,32 @@ macro_rules! impl_object_for_packet {
     };
 }
 
-/* c++ style assert */
 #[macro_export]
-macro_rules! assert_expr {
-    ($cond:expr) => {
-        if ($cond) == false {
-            return false;
+macro_rules! packet_factory_methods {
+    () => {
+        fn get_num_packet_types(&self) -> u32 {
+            self.num_packet_types
+        }
+
+        fn destroy_packet(&self) {
+            todo!()
+        }
+
+        fn get_num_allocated_packets(&self) -> u32 {
+            self.num_allocated_packets
         }
     };
 }
+
+/* c++ style assert */
+// #[macro_export]
+// macro_rules! assert_expr {
+//     ($cond:expr) => {
+//         if ($cond) == false {
+//             return false;
+//         }
+//     };
+// }
 
 /**
     Macro for calculating number of bits required for a 32 bit value.

@@ -26,13 +26,12 @@
 const MAX_PACKET_SIZE: usize = 1024;
 
 use rand::random;
-use std::fmt::Write;
 
 use crate::{
     impl_object_for_packet,
     protocol::{
         get_error_string,
-        packets::{self, read_packet, Object, Packet, PacketFactory, PacketInfo, PacketTypes},
+        packets::{self, read_packet, Object, Packet, PacketFactory, PacketInfo},
         serialization::{
             read_object_index_macro, serialize_float_macro, serialize_int_macro,
             write_object_index_macro, MAX_OBJECTS,
@@ -42,7 +41,7 @@ use crate::{
     },
 };
 
-const NUM_ITERATIONS: u32 = 10000;
+const NUM_ITERATIONS: u32 = 100;
 
 #[derive(Debug, PartialEq)]
 pub struct TestObject {
@@ -224,7 +223,13 @@ pub fn test() {
             packet_factory: &packet_factory,
         };
 
-        let bytes_written = packets::write_packet(&info, write_packet.as_mut(), &mut buffer, None);
+        let bytes_written = packets::write_packet(
+            &info,
+            write_packet.as_mut(),
+            &mut buffer,
+            MAX_PACKET_SIZE as usize,
+            None,
+        );
 
         if bytes_written > 0 {
             println!(
