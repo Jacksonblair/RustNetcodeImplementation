@@ -2,7 +2,10 @@ use std::slice::from_raw_parts;
 
 use crate::protocol::ProtocolError;
 
-use super::streams::{ReadStream, Stream, WriteStream};
+use super::{
+    streams::{ReadStream, Stream, WriteStream},
+    Buffer,
+};
 
 const PACKET_BUFFER_SIZE: u32 = 256;
 const MAX_FRAGMENT_SIZE: u32 = 1024;
@@ -76,54 +79,10 @@ impl PacketInfo<'_> {
 }
 
 /** TODO */
-struct PacketBufferEntry {
-    sequence: u32,           // packet sequence number
-    num_fragments: u32,      // number of fragments for this packet
-    received_fragments: u32, // number of received fragments so far
-    fragment_size: [u32; MAX_FRAGMENTS_PER_PACKET as usize], // size of fragment n in bytes
-                             // uint8_t *fragmentData[MaxFragmentsPerPacket];       // pointer to data for fragment n
-}
-
-/**
-    TODO
-*/
-pub struct PacketBuffer {
-    current_sequence: u16,       // sequence number of most recent packet in buffer
-    num_buffered_fragments: u32, // total number of fragments stored in the packet buffer (across *all* packets)
-    valid: [u8; PACKET_BUFFER_SIZE as usize], // true if there is a valid buffered packet entry at this index
-    entries: [PacketBufferEntry; PACKET_BUFFER_SIZE as usize], // buffered packets in range [ current_sequence - PacketBufferSize + 1, current_sequence ] (modulo 65536)
-}
-
-impl PacketBuffer {
-    /*
-        Advance the current sequence for the packet buffer forward.
-        This function removes old packet entries and frees their fragments.
-    */
-    pub fn advance(&self, sequence: u16) {
-        todo!();
-    }
-
-    pub fn process_fragment(&self) -> bool {
-        // calls advance
-        todo!();
-        true
-    }
-
-    pub fn process_packets(&self) {
-        // calls process_fragment
-        todo!();
-    }
-
-    pub fn receive_packets(&self) {
-        todo!()
-    }
-}
-
-/** TODO */
 pub fn write_packet(
     info: &PacketInfo,
     packet: &mut dyn Packet,
-    buffer: &mut Vec<u32>,
+    buffer: &mut Buffer,
     buffer_length: usize,
     header: Option<&mut dyn Object>,
 ) -> u32 {
@@ -170,6 +129,7 @@ pub fn write_packet(
     }
 
     stream.serialize_check(&mut String::from("end of packet"));
+
     stream.writer.flush();
     let bytes_processed = stream.get_bytes_processed();
 
@@ -204,7 +164,7 @@ pub fn write_packet(
 
 pub fn read_packet(
     info: &PacketInfo,
-    buffer: &mut Vec<u32>,
+    buffer: &mut Buffer,
     header: Option<&mut dyn Object>,
     error: &mut ProtocolError,
 ) -> Option<Box<dyn Packet>> {
@@ -293,21 +253,25 @@ pub fn read_packet(
         if *error == ProtocolError::None {
             *error = ProtocolError::SerializePacketFailed;
         }
-        // info.packetFactory->DestroyPacket(packet);
+        return None;
     }
 
     if !stream.serialize_check(&mut String::from("end of packet")) {
         if *error == ProtocolError::None {
             *error = ProtocolError::SerializeCheckFailed;
         }
-        // info.packetFactory->DestroyPacket(packet);
+        return None;
     }
 
     if stream.get_error() != ProtocolError::None {
         if *error == ProtocolError::None {
             *error = stream.get_error();
         }
-        // info.packetFactory->DestroyPacket(packet);
+        return None;
+    }
+
+    if *error != ProtocolError::None {
+        return None;
     }
 
     return Some(packet);

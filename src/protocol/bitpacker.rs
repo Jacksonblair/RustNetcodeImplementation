@@ -1,15 +1,29 @@
+use std::ptr::copy_nonoverlapping;
+
+use super::Buffer;
+
+fn print_word(bytes: &Vec<u8>, idx: usize) {
+    println!(
+        "BUFFER: {:#010b} {:#010b} {:#010b} {:#010b}",
+        bytes[idx],
+        bytes[idx + 1],
+        bytes[idx + 2],
+        bytes[idx + 3]
+    );
+}
+
 pub struct BitWriter<'a> {
-    buffer: &'a mut Vec<u32>, // Pointer to buffer
-    scratch: u64,             // 64 bit scratch buffer
-    num_bits: u32,            // Bits in buffer
-    num_words: u32,           // Words in buffer
-    bits_written: u32,        // Number of bits written to buffer
-    word_index: u32,          // Current word index
-    scratch_bits: i32,        // Number of bits in scratch buffer
+    buffer: &'a mut Buffer, // Pointer to buffer
+    scratch: u64,           // 64 bit scratch buffer
+    num_bits: u32,          // Bits in buffer
+    num_words: u32,         // Words in buffer
+    bits_written: u32,      // Number of bits written to buffer
+    word_index: u32,        // Current word index
+    scratch_bits: i32,      // Number of bits in scratch buffer
 }
 
 impl BitWriter<'_> {
-    pub fn new(buffer: &mut Vec<u32>, buffer_size: usize) -> BitWriter {
+    pub fn new(buffer: &mut Buffer, buffer_size: usize) -> BitWriter {
         assert!(buffer_size % 4 == 0, "bytes must be a multiple of 4");
         return BitWriter {
             buffer,
@@ -22,7 +36,7 @@ impl BitWriter<'_> {
         };
     }
 
-    // Align buffer to next byte
+    /** Aligns bitwriter position to next byte */
     pub fn write_align(&mut self) -> bool {
         let remainder_bits = self.bits_written % 8;
         if remainder_bits != 0 {
@@ -32,11 +46,17 @@ impl BitWriter<'_> {
         return true;
     }
 
-    // Flush remaining bits in scratch into buffer
+    /** Flush remaining bits in scratch into buffer */
     pub fn flush(&mut self) {
         if self.scratch_bits != 0 {
             assert!(self.word_index < self.num_words);
-            self.buffer[self.word_index as usize] = self.scratch as u32;
+
+            // Copy scratch into buffer
+            let bytes = (self.scratch as u32).to_le_bytes();
+            for i in 0..4 {
+                self.buffer[((self.word_index * 4) as usize) + i] = bytes[i];
+            }
+
             self.scratch >>= 32;
             self.scratch_bits -= 32;
             self.word_index += 1;
@@ -70,25 +90,27 @@ impl BitWriter<'_> {
         */
         if self.scratch_bits >= 32 {
             assert!(self.word_index < self.num_words);
-
-            // println!("Added: {val_to_write:#num_bits$b}", val_to_write=val_to_write, num_bits=(num_bits as usize) + 2);
             // println!("Scratch full: {:#066b}", self.scratch);
-            // println!("Scratch bits: {:?}", self.scratch_bits);
             // println!("Adding to buffer: {:#034b}", self.scratch);
+            // println!("Buffer: {:#034b}", self.buffer[self.word_index as usize]);
+            // println!("Scratch bits: {:?}", self.scratch_bits);
 
-            self.buffer[self.word_index as usize] = self.scratch as u32;
+            // Copy scratch into buffer
+            unsafe {
+                let src = (self.scratch as u32).to_le_bytes().as_ptr();
+                let dest = self.buffer.as_mut_ptr().add((self.word_index * 4) as usize);
+                std::ptr::copy_nonoverlapping(src, dest, 4);
+            }
+
             self.scratch >>= 32;
             self.scratch_bits -= 32;
             self.word_index += 1;
-
-            // println!("Updated buffer: {:?}", self.buffer);
-            // println!("Remaining bits: {:?}", self.scratch_bits);
         }
 
         self.bits_written += num_bits;
     }
 
-    pub fn write_bytes(&mut self, bytes: &mut [u8], num_bytes: u32) -> bool {
+    pub fn write_bytes(&mut self, bytes: &mut Vec<u8>, num_bytes: u32) -> bool {
         assert!(self.get_align_bits() == 0);
         assert!(self.bits_written + num_bytes * 8 <= self.num_bits);
         assert!(
@@ -133,9 +155,9 @@ impl BitWriter<'_> {
             assert!((self.bits_written % 32) == 0);
             unsafe {
                 // COPY ALL THE WORDS at once into buffer.
-                let dest_ptr = self.buffer.as_mut_ptr().add(self.word_index as usize);
-                let src_ptr = bytes.as_ptr().add(head_bytes as usize) as *const u32;
-                std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, num_words as usize);
+                let dest_ptr = self.buffer.as_mut_ptr().add((self.word_index * 4) as usize);
+                let src_ptr = bytes.as_ptr().add(head_bytes as usize);
+                std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, (num_words * 4) as usize);
             }
             self.bits_written += num_words * 32;
             self.word_index += num_words;
@@ -169,13 +191,21 @@ impl BitWriter<'_> {
         return (self.bits_written + 7) / 8;
     }
 
+    pub fn get_total_bytes(&mut self) -> u32 {
+        self.num_words * 4
+    }
+
+    pub fn get_bits_available(&mut self) -> u32 {
+        return self.num_bits - self.bits_written;
+    }
+
     pub fn get_align_bits(&self) -> u32 {
         return (8 - (self.bits_written % 8)) % 8;
     }
 }
 
 pub struct BitReader<'a> {
-    buffer: &'a Vec<u32>,   // Pointer to buffer
+    buffer: &'a Buffer,     // Pointer to buffer
     scratch: u64,           // 64 bit scratch buffer
     pub scratch_bits: u32,  // Number of bits in scratch buffer
     num_bits: u32,          // Bits in buffer
@@ -184,7 +214,7 @@ pub struct BitReader<'a> {
 }
 
 impl BitReader<'_> {
-    pub fn new(buffer: &mut Vec<u32>, bytes: usize) -> BitReader {
+    pub fn new(buffer: &mut Buffer, bytes: usize) -> BitReader {
         assert!(buffer.len() % 4 == 0, "bytes must be a multiple of 4");
         return BitReader {
             scratch: 0,
@@ -194,6 +224,14 @@ impl BitReader<'_> {
             word_index: 0,
             buffer,
         };
+    }
+
+    pub fn get_word_index(&self) -> usize {
+        return self.word_index as usize;
+    }
+
+    pub fn print_word(&self, idx: usize) {
+        print_word(self.buffer, idx);
     }
 
     pub fn would_read_past_end(&self, bits: u32) -> bool {
@@ -233,8 +271,17 @@ impl BitReader<'_> {
 
         // If there aren't enough bits in scratch to read off the specified amount..
         if self.scratch_bits < bits {
+            // TODO: Can i do this without
             // Read a word from buffer into scratch, shifted left by bits in scratch
-            self.scratch |= (self.buffer[self.word_index as usize] as u64) << self.scratch_bits;
+            let word_index = (self.word_index * 4) as usize;
+            let word_bytes = [
+                self.buffer[word_index],
+                self.buffer[word_index + 1],
+                self.buffer[word_index + 2],
+                self.buffer[word_index + 3],
+            ];
+            let word = u32::from_le_bytes(word_bytes);
+            self.scratch |= (word as u64) << self.scratch_bits;
             self.scratch_bits += 32;
             self.word_index += 1;
         }
@@ -254,7 +301,7 @@ impl BitReader<'_> {
         output
     }
 
-    pub fn read_bytes(&mut self, bytes: &mut [u8], num_bytes: u32) {
+    pub fn read_bytes(&mut self, bytes: &mut Vec<u8>, num_bytes: u32) {
         // Check we're aligned to byte
         assert!(self.get_align_bits() == 0);
 
@@ -292,10 +339,11 @@ impl BitReader<'_> {
         if num_words > 0 {
             assert!((self.num_bits_read % 32) == 0);
             unsafe {
-                let src_ptr = self.buffer.as_ptr().add(self.word_index as usize);
-                let dest_ptr = bytes.as_ptr().add(head_bytes as usize) as *mut u32;
-                std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, num_words as usize);
+                let src_ptr = self.buffer.as_ptr().add((self.word_index * 4) as usize);
+                let dest_ptr = bytes.as_mut_ptr().add(head_bytes as usize);
+                std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, (num_words * 4) as usize);
             }
+
             self.num_bits_read += num_words * 32;
             self.word_index += num_words;
             self.scratch_bits = 0;
@@ -329,12 +377,12 @@ impl BitReader<'_> {
 
 mod tests {
     use super::{BitReader, BitWriter};
+    use crate::protocol::Buffer;
 
     #[test]
     fn test_bitpacker() {
         let buffer_size: usize = 256;
-
-        let mut buffer: Vec<u32> = vec![0; buffer_size];
+        let mut buffer: Buffer = vec![0; buffer_size];
         let bits_written: u32;
         let bytes_written: u32;
 
@@ -342,9 +390,8 @@ mod tests {
             let mut writer = BitWriter::new(&mut buffer, buffer_size);
             assert!(writer.get_bits_written() == 0);
             assert!(writer.get_bytes_written() == 0);
-            // check( writer.GetTotalBytes() == BufferSize );
-            // check( writer.GetBitsAvailable() == BufferSize * 8 );
-            // check( writer.GetData() == buffer );
+            assert!(writer.get_total_bytes() == buffer_size as u32);
+            assert!(writer.get_bits_available() == (buffer_size as u32) * 8);
 
             writer.write_bits(0, 1);
             writer.write_bits(1, 1);
@@ -361,13 +408,12 @@ mod tests {
 
             // All values + padding + bytes
             bits_written = 1 + 1 + 8 + 8 + 10 + 16 + 32 + 4 + (bytes.len() as u32 * 8); // 76
-
             bytes_written = writer.get_bytes_written();
 
             assert_eq!(bits_written / 8, bytes_written);
             assert_eq!(bits_written, writer.get_bits_written());
-            // check( writer.GetTotalBytes() == BufferSize );
-            // check( writer.GetBitsAvailable() == BufferSize * 8 - bitsWritten );
+            assert!(writer.get_total_bytes() == buffer_size as u32);
+            assert!(writer.get_bits_available() == (buffer_size as u32) * 8 - bits_written);
         }
 
         {

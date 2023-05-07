@@ -578,7 +578,7 @@ mod tests {
     fn test_serialization() {
         let mut write_obj = TestObject::new();
         write_obj.init();
-        let mut buffer = vec![0; 100];
+        let mut buffer = vec![0; 1024];
         let buffer_size = buffer.len();
 
         {

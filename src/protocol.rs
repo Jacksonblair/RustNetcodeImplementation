@@ -22,7 +22,7 @@ pub enum ProtocolError {
     SerializeCheckFailed = 7,
 }
 
-pub type Buffer = Vec<u32>;
+pub type Buffer = Vec<u8>;
 
 /*
   uint32_t calculate_crc32(const uint8_t *buffer, size_t length, uint32_t crc32)
@@ -58,14 +58,15 @@ pub fn to_bytes(input: &[u32]) -> Vec<u8> {
     bytes
 }
 
+/** TODO: FINISH ?? */
 pub fn hash_string(input: &mut String) -> u32 {
     let mut hasher = DefaultHasher::new();
-    let magic = input.hash(&mut hasher);
-    let mut hash = hasher.finish();
+    input.hash(&mut hasher);
+    let hash = hasher.finish();
     return hash as u32;
 }
 
-pub fn calc_packet_crc32(buffer: &[u8], protocol_id: u32) -> u32 {
+pub fn calc_packet_crc32(buffer: &Buffer, protocol_id: u32) -> u32 {
     let protocol_bytes_temp = protocol_id.to_le_bytes();
     let protocol_bytes = protocol_bytes_temp.as_slice();
     let mut crc_bytes: Vec<u8> = vec![];

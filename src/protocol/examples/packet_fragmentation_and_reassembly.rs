@@ -46,13 +46,13 @@ impl PacketBuffer<'_> {
 
     /** TODO */
     fn process_packet(&mut self, data: &mut Buffer, size: usize) -> bool {
-        let mut stream = ReadStream::new(data, size);
-        let mut fragment_packet = FragmentPacket::new();
+        // let mut stream = ReadStream::new(data, size);
+        // let mut fragment_packet = FragmentPacket::new();
 
-        if !fragment_packet.serialize(&mut stream) {
-            println!("Error: Fragment packet failed to serialize");
-            return false;
-        }
+        // if !fragment_packet.serialize(&mut stream) {
+        //     println!("Error: Fragment packet failed to serialize");
+        //     return false;
+        // }
 
         // let crc32 = calc_packet_crc32(data. , PROTOCOL_ID);
 
@@ -552,217 +552,217 @@ impl_object_for_packet!(TestPacketHeader);
 
 // #[test]
 pub fn test() {
-    let packet_factory = TestPacketFactory::new();
-    let sequence: u16 = 0;
+    //     let packet_factory = TestPacketFactory::new();
+    //     let sequence: u16 = 0;
 
-    for _ in 0..NUM_ITERATIONS {
-        let packet_type: u32 = 1;
-        // (1 + rand::random::<u32>()) % ((TestPacketTypes::NumTypes as u32) - 1); // 0 Indicates packet fragment
-        println!("PACKET TYPE: {:?}", packet_type);
+    //     for _ in 0..NUM_ITERATIONS {
+    //         let packet_type: u32 = 1;
+    //         // (1 + rand::random::<u32>()) % ((TestPacketTypes::NumTypes as u32) - 1); // 0 Indicates packet fragment
+    //         println!("PACKET TYPE: {:?}", packet_type);
 
-        let mut packet = packet_factory.create_packet(packet_type);
+    //         let mut packet = packet_factory.create_packet(packet_type);
 
-        assert!(packet.get_packet_type() == packet_type);
+    //         assert!(packet.get_packet_type() == packet_type);
 
-        let mut buffer: Vec<u32> = vec![0; MAX_PACKET_SIZE as usize];
-        let mut error: bool = false;
+    //         let mut buffer: Vec<u32> = vec![0; MAX_PACKET_SIZE as usize];
+    //         let mut error: bool = false;
 
-        let mut write_packet_header = TestPacketHeader { sequence };
+    //         let mut write_packet_header = TestPacketHeader { sequence };
 
-        let mut info = PacketInfo::new(&packet_factory);
-        info.protocol_id = PROTOCOL_ID;
+    //         let mut info = PacketInfo::new(&packet_factory);
+    //         info.protocol_id = PROTOCOL_ID;
 
-        let bytes_written = write_packet(
-            &info,
-            packet.as_mut(),
-            &mut buffer,
-            MAX_PACKET_SIZE,
-            Some(&mut write_packet_header),
-        );
+    //         let bytes_written = write_packet(
+    //             &info,
+    //             packet.as_mut(),
+    //             &mut buffer,
+    //             MAX_PACKET_SIZE,
+    //             Some(&mut write_packet_header),
+    //         );
 
-        println!("====================================");
-        println!("Writing packet {:?}", sequence);
+    //         println!("====================================");
+    //         println!("Writing packet {:?}", sequence);
 
-        if bytes_written > 0 {
-            println!(
-                "Wrote packet type {:?} ({:?} bytes)",
-                packet.get_packet_type(),
-                bytes_written
-            );
-        } else {
-            println!("Write packet error");
-            error = true;
-        }
+    //         if bytes_written > 0 {
+    //             println!(
+    //                 "Wrote packet type {:?} ({:?} bytes)",
+    //                 packet.get_packet_type(),
+    //                 bytes_written
+    //             );
+    //         } else {
+    //             println!("Write packet error");
+    //             error = true;
+    //         }
 
-        if bytes_written > MAX_FRAGMENT_SIZE as u32 {
-            let mut num_fragments: u32 = 0;
-            let mut fragment_packets: Vec<PacketData> = vec![];
-            for _i in 0..MAX_FRAGMENTS_PER_PACKET {
-                fragment_packets.push(PacketData::new());
-            }
+    //         if bytes_written > MAX_FRAGMENT_SIZE as u32 {
+    //             let mut num_fragments: u32 = 0;
+    //             let mut fragment_packets: Vec<PacketData> = vec![];
+    //             for _i in 0..MAX_FRAGMENTS_PER_PACKET {
+    //                 fragment_packets.push(PacketData::new());
+    //             }
 
-            split_packet_into_fragments(
-                sequence,
-                &mut buffer,
-                bytes_written,
-                &mut num_fragments,
-                &mut fragment_packets,
-            );
-            // for ( int j = 0; j < num_fragments; ++j )
-            //      packetBuffer.process_packet( fragment_packets[j].data, fragment_packets[j].size );
-        } else {
-            println!("Sending packet {:?} as a  regular packet", sequence);
-            // packetBuffer.ProcessPacket( buffer, bytesWritten );
-        }
-    }
+    //             split_packet_into_fragments(
+    //                 sequence,
+    //                 &mut buffer,
+    //                 bytes_written,
+    //                 &mut num_fragments,
+    //                 &mut fragment_packets,
+    //             );
+    //             // for ( int j = 0; j < num_fragments; ++j )
+    //             //      packetBuffer.process_packet( fragment_packets[j].data, fragment_packets[j].size );
+    //         } else {
+    //             println!("Sending packet {:?} as a  regular packet", sequence);
+    //             // packetBuffer.ProcessPacket( buffer, bytesWritten );
+    //         }
+    //     }
 
-    /*
+    //     /*
 
-       for ( int i = 0; ( i < NumIterations || NumIterations == -1 ); ++i )
-       {
-        ....
+    //        for ( int i = 0; ( i < NumIterations || NumIterations == -1 ); ++i )
+    //        {
+    //         ....
 
-           int numPackets = 0;
-           PacketData packets[PacketBufferSize];
-           packetBuffer.ReceivePackets( numPackets, packets );
+    //            int numPackets = 0;
+    //            PacketData packets[PacketBufferSize];
+    //            packetBuffer.ReceivePackets( numPackets, packets );
 
-           for ( int j = 0; j < numPackets; ++j )
-           {
-               int readError;
-               TestPacketHeader readPacketHeader;
-               protocol2::Packet *readPacket = protocol2::ReadPacket( info, buffer, bytesWritten, &readPacketHeader, &readError );
+    //            for ( int j = 0; j < numPackets; ++j )
+    //            {
+    //                int readError;
+    //                TestPacketHeader readPacketHeader;
+    //                protocol2::Packet *readPacket = protocol2::ReadPacket( info, buffer, bytesWritten, &readPacketHeader, &readError );
 
-               if ( readPacket )
-               {
-                   printf( "read packet type %d (%d bytes)\n", readPacket->GetType(), bytesWritten );
+    //                if ( readPacket )
+    //                {
+    //                    printf( "read packet type %d (%d bytes)\n", readPacket->GetType(), bytesWritten );
 
-                   if ( !CheckPacketsAreIdentical( readPacket, writePacket, readPacketHeader, writePacketHeader ) )
-                   {
-                       printf( "failure: read packet is not the same as written packet. something wrong with serialize function?\n" );
-                       error = true;
-                   }
-                   else
-                   {
-                       printf( "success: read packet %d matches written packet %d\n", readPacketHeader.sequence, writePacketHeader.sequence );
-                   }
-               }
-               else
-               {
-                   printf( "read packet error: %s\n", protocol2::GetErrorString( readError ) );
+    //                    if ( !CheckPacketsAreIdentical( readPacket, writePacket, readPacketHeader, writePacketHeader ) )
+    //                    {
+    //                        printf( "failure: read packet is not the same as written packet. something wrong with serialize function?\n" );
+    //                        error = true;
+    //                    }
+    //                    else
+    //                    {
+    //                        printf( "success: read packet %d matches written packet %d\n", readPacketHeader.sequence, writePacketHeader.sequence );
+    //                    }
+    //                }
+    //                else
+    //                {
+    //                    printf( "read packet error: %s\n", protocol2::GetErrorString( readError ) );
 
-                   error = true;
-               }
+    //                    error = true;
+    //                }
 
-               packetFactory.DestroyPacket( readPacket );
+    //                packetFactory.DestroyPacket( readPacket );
 
-               if ( error )
-                   break;
+    //                if ( error )
+    //                    break;
 
-               printf( "===================================================\n" );
-           }
+    //                printf( "===================================================\n" );
+    //            }
 
-           packetFactory.DestroyPacket( writePacket );
+    //            packetFactory.DestroyPacket( writePacket );
 
-           if ( error )
-               return 1;
+    //            if ( error )
+    //                return 1;
 
-           sequence++;
+    //            sequence++;
 
-           printf( "\n" );
-       }
+    //            printf( "\n" );
+    //        }
 
-       return 0;
-    */
-}
+    //        return 0;
+    //     */
+    // }
 
-fn split_packet_into_fragments(
-    sequence: u16,
-    packet_data: &mut Vec<u32>,
-    packet_size: u32,
-    num_fragments: &mut u32,
-    fragment_packets: &mut Vec<PacketData>,
-) -> bool {
-    *num_fragments = 0;
+    // fn split_packet_into_fragments(
+    //     sequence: u16,
+    //     packet_data: &mut Vec<u32>,
+    //     packet_size: u32,
+    //     num_fragments: &mut u32,
+    //     fragment_packets: &mut Vec<PacketData>,
+    // ) -> bool {
+    //     *num_fragments = 0;
 
-    assert!(packet_size > 0);
-    assert!(packet_size < MAX_PACKET_SIZE as u32);
+    //     assert!(packet_size > 0);
+    //     assert!(packet_size < MAX_PACKET_SIZE as u32);
 
-    // Calculate number of fragments in packet
-    if packet_size % MAX_FRAGMENT_SIZE as u32 != 0 {
-        *num_fragments = (packet_size / MAX_FRAGMENT_SIZE as u32) + 1
-    } else {
-        *num_fragments = packet_size / MAX_FRAGMENT_SIZE as u32
-    };
+    //     // Calculate number of fragments in packet
+    //     if packet_size % MAX_FRAGMENT_SIZE as u32 != 0 {
+    //         *num_fragments = (packet_size / MAX_FRAGMENT_SIZE as u32) + 1
+    //     } else {
+    //         *num_fragments = packet_size / MAX_FRAGMENT_SIZE as u32
+    //     };
 
-    assert!(*num_fragments > 0);
-    assert!(*num_fragments <= MAX_FRAGMENTS_PER_PACKET as u32);
-    println!("Splitting packet into {:?} fragments", *num_fragments);
+    //     assert!(*num_fragments > 0);
+    //     assert!(*num_fragments <= MAX_FRAGMENTS_PER_PACKET as u32);
+    //     println!("Splitting packet into {:?} fragments", *num_fragments);
 
-    let mut src_ptr = packet_data.as_ptr() as *mut u8;
+    //     let mut src_ptr = packet_data.as_ptr() as *mut u8;
 
-    for i in 0..*num_fragments {
-        // Calculate fragment size
-        let fragment_size = if i == *num_fragments - 1 {
-            // If at last fragment, get number of remaining bytes/bits?
-            packet_size % (MAX_FRAGMENT_SIZE as u32)
-        } else {
-            MAX_FRAGMENT_SIZE as u32
-        };
+    //     for i in 0..*num_fragments {
+    //         // Calculate fragment size
+    //         let fragment_size = if i == *num_fragments - 1 {
+    //             // If at last fragment, get number of remaining bytes/bits?
+    //             packet_size % (MAX_FRAGMENT_SIZE as u32)
+    //         } else {
+    //             MAX_FRAGMENT_SIZE as u32
+    //         };
 
-        assert!(fragment_packets[i as usize].data.len() == MAX_PACKET_FRAGMENT_SIZE as usize);
+    //         assert!(fragment_packets[i as usize].data.len() == MAX_PACKET_FRAGMENT_SIZE as usize);
 
-        let mut stream = WriteStream::new(packet_data, MAX_PACKET_FRAGMENT_SIZE as usize);
+    //         let mut stream = WriteStream::new(packet_data, MAX_PACKET_FRAGMENT_SIZE as usize);
 
-        let mut fragment_packet = FragmentPacket::new();
-        fragment_packet.fragment_size = fragment_size;
-        fragment_packet.sequence = sequence;
-        fragment_packet.fragment_id = i as u8;
-        fragment_packet.num_fragments = (*num_fragments) as u8;
+    //         let mut fragment_packet = FragmentPacket::new();
+    //         fragment_packet.fragment_size = fragment_size;
+    //         fragment_packet.sequence = sequence;
+    //         fragment_packet.fragment_id = i as u8;
+    //         fragment_packet.num_fragments = (*num_fragments) as u8;
 
-        // Copy fragment_size * bytes into fragment data from packet data
-        unsafe {
-            let dest_ptr = fragment_packet.fragment_data.as_mut_ptr();
-            std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, fragment_size as usize);
-        }
+    //         // Copy fragment_size * bytes into fragment data from packet data
+    //         unsafe {
+    //             let dest_ptr = fragment_packet.fragment_data.as_mut_ptr();
+    //             std::ptr::copy_nonoverlapping(src_ptr, dest_ptr, fragment_size as usize);
+    //         }
 
-        // Call .serialize on fragment_packet
-        if !fragment_packet.serialize(&mut stream) {
-            // If serialize fails, do whatever this is for??
-            *num_fragments = 0;
-            for _ in 0..i {
-                // delete fragment_packets[i].data
-                fragment_packets[i as usize].size = 0;
-                // fragment_packets[i].data = null
-            }
-            return false;
-        };
+    //         // Call .serialize on fragment_packet
+    //         if !fragment_packet.serialize(&mut stream) {
+    //             // If serialize fails, do whatever this is for??
+    //             *num_fragments = 0;
+    //             for _ in 0..i {
+    //                 // delete fragment_packets[i].data
+    //                 fragment_packets[i as usize].size = 0;
+    //                 // fragment_packets[i].data = null
+    //             }
+    //             return false;
+    //         };
 
-        stream.writer.flush();
-        // TODO: host_to_network(protocolID) ??
-        let crc32 = calc_packet_crc32(&fragment_packets[i as usize].data, PROTOCOL_ID);
+    //         stream.writer.flush();
+    //         // TODO: host_to_network(protocolID) ??
+    //         let crc32 = calc_packet_crc32(&fragment_packets[i as usize].data, PROTOCOL_ID);
 
-        // Write crc32 directly into packet data
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                crc32.to_le_bytes().as_ptr(),
-                fragment_packet.fragment_data.as_mut_ptr(),
-                4,
-            );
-        }
+    //         // Write crc32 directly into packet data
+    //         unsafe {
+    //             std::ptr::copy_nonoverlapping(
+    //                 crc32.to_le_bytes().as_ptr(),
+    //                 fragment_packet.fragment_data.as_mut_ptr(),
+    //                 4,
+    //             );
+    //         }
 
-        println!(
-            "Fragment packet {:?}: {:?} bytes",
-            i,
-            stream.get_bytes_processed()
-        );
-        fragment_packets[i as usize].size = stream.get_bytes_processed();
+    //         println!(
+    //             "Fragment packet {:?}: {:?} bytes",
+    //             i,
+    //             stream.get_bytes_processed()
+    //         );
+    //         fragment_packets[i as usize].size = stream.get_bytes_processed();
 
-        // Advance src ptr by bytes written
-        unsafe {
-            src_ptr = src_ptr.add(fragment_size as usize);
-        }
-    }
+    //         // Advance src ptr by bytes written
+    //         unsafe {
+    //             src_ptr = src_ptr.add(fragment_size as usize);
+    //         }
+    //     }
 
     // assert( src == packetData + packetSize );
-    true
+    // true
 }

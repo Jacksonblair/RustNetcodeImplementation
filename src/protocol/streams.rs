@@ -5,7 +5,7 @@ use std::{
 
 use super::{
     bitpacker::{BitReader, BitWriter},
-    hash_string, ProtocolError,
+    hash_string, Buffer, ProtocolError,
 };
 use crate::bits_required;
 
@@ -27,7 +27,7 @@ pub struct WriteStream<'a> {
 }
 
 impl<'a> WriteStream<'a> {
-    pub fn new(buffer: &mut Vec<u32>, buffer_size: usize) -> WriteStream {
+    pub fn new(buffer: &mut Buffer, buffer_size: usize) -> WriteStream {
         return WriteStream {
             writer: BitWriter::new(buffer, buffer_size),
             error: ProtocolError::None,
@@ -81,14 +81,23 @@ impl<'a> Stream for WriteStream<'a> {
         return self.writer.write_bytes(bytes, num_bytes);
     }
 
+    /** Serializes as many 0's as it needs to align buffer data to next byte */
     fn serialize_align(&mut self) -> bool {
         return self.writer.write_align();
     }
 
+    /** Pads buffer data to next byte and serializes string hashed to 32 bits */
     fn serialize_check(&mut self, string: &mut String) -> bool {
+        // println!("------------ START");
+        // self.writer.print_word(self.writer.get_word_index());
+
         self.serialize_align();
         let mut hash = hash_string(string);
         self.serialize_bits(&mut hash, 32);
+
+        // self.writer.print_word(self.writer.get_word_index() - 1);
+        // self.writer.print_word(self.writer.get_word_index());
+        // println!("------------ END");
         true
     }
 
@@ -98,12 +107,12 @@ impl<'a> Stream for WriteStream<'a> {
 }
 
 pub struct ReadStream<'a> {
-    reader: BitReader<'a>,
+    pub reader: BitReader<'a>,
     error: ProtocolError,
 }
 
 impl<'a> ReadStream<'a> {
-    pub fn new(buffer: &mut Vec<u32>, buffer_size: usize) -> ReadStream {
+    pub fn new(buffer: &mut Buffer, buffer_size: usize) -> ReadStream {
         return ReadStream {
             reader: BitReader::new(buffer, buffer_size),
             error: ProtocolError::None,
@@ -175,17 +184,22 @@ impl<'a> Stream for ReadStream<'a> {
     }
 
     fn serialize_check(&mut self, string: &mut String) -> bool {
-        self.serialize_align();
-        let mut val: u32 = 0;
-        self.serialize_bits(&mut val, 32);
-        let magic = hash_string(string);
+        // self.reader.print_word(self.reader.get_word_index());
 
-        if magic != val {
+        self.serialize_align();
+        // self.reader.print_word(self.reader.get_word_index());
+        let mut val: u32 = 0;
+
+        self.serialize_bits(&mut val, 32);
+
+        let hash = hash_string(string);
+
+        if hash != val {
             println!(
                 "Serialize check failed: {:?}. Expected {:?}, got {:?}",
-                string, magic, val
+                string, hash, val
             );
-            return magic == val;
+            return hash == val;
         }
 
         true

@@ -23,7 +23,7 @@
     - Write packet does not care about the packet type, it just creates a write_stream and calls the packet.serialize_w method with the correct args.
 */
 
-const MAX_PACKET_SIZE: usize = 1024;
+const MAX_PACKET_SIZE: usize = 256 * 1024;
 
 use rand::random;
 
@@ -37,7 +37,7 @@ use crate::{
             write_object_index_macro, MAX_OBJECTS,
         },
         streams::{ReadStream, Stream, WriteStream},
-        ProtocolError,
+        Buffer, ProtocolError,
     },
 };
 
@@ -157,6 +157,7 @@ fn read_scene_a(stream: &mut ReadStream, scene: &mut SceneA) -> bool {
             // When we hit 'sentinel' value
             break;
         }
+
         // Read object
         serialize_int_macro(
             stream,
@@ -199,10 +200,8 @@ impl PacketFactory for TestPacketFactory {
     }
 }
 
-// #[test]
+#[test]
 pub fn test() {
-    return;
-
     let packet_factory = TestPacketFactory {
         num_allocated_packets: 0,
         num_packet_types: TestPacketTypes::NumTypes as u32,
@@ -214,7 +213,7 @@ pub fn test() {
 
         assert!(write_packet.get_packet_type() == packet_type);
 
-        let mut buffer: Vec<u32> = vec![0; MAX_PACKET_SIZE];
+        let mut buffer: Buffer = vec![0; MAX_PACKET_SIZE];
         let mut error: bool = false;
 
         let info: PacketInfo = PacketInfo {
