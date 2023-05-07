@@ -1,6 +1,6 @@
 use std::slice::from_raw_parts;
 
-use crate::protocol::{calculate_crc32, to_bytes, ProtocolError};
+use crate::protocol::ProtocolError;
 
 use super::streams::{ReadStream, Stream, WriteStream};
 

@@ -120,8 +120,8 @@ pub fn serialize_compressed_vector_internal<T: Stream>(
     return true;
 }
 
-pub fn serialize_bytes_internal<T: Stream>(
-    stream: &mut T,
+pub fn serialize_bytes_internal(
+    stream: &mut dyn Stream,
     bytes: &mut Vec<u8>,
     num_bytes: u32,
 ) -> bool {
@@ -430,6 +430,7 @@ pub fn serialize_u64_macro(stream: &mut dyn Stream, value: &mut u64) -> bool {
     true
 }
 
+/** TODO: ADD COMMENT */
 pub fn serialize_align_macro(stream: &mut dyn Stream) -> bool {
     return stream.serialize_align();
 }
