@@ -205,7 +205,7 @@ impl PacketFactory for TestPacketFactory {
 pub fn test() {
     return;
 
-    let packet_factory = TestPacketFactory {
+    let packet_factory: TestPacketFactory = TestPacketFactory {
         num_allocated_packets: 0,
         num_packet_types: TestPacketTypes::NumTypes as u32,
     };

@@ -170,20 +170,20 @@ impl BitWriter<'_> {
         return true;
     }
 
-    pub fn get_bits_written(&mut self) -> u32 {
+    pub fn get_bits_written(&self) -> u32 {
         return self.bits_written;
     }
 
-    pub fn get_bytes_written(&mut self) -> u32 {
+    pub fn get_bytes_written(&self) -> u32 {
         // Add the seven and divide to round up.
         return (self.bits_written + 7) / 8;
     }
 
-    pub fn get_total_bytes(&mut self) -> u32 {
+    pub fn get_total_bytes(&self) -> u32 {
         self.num_words * 4
     }
 
-    pub fn get_bits_available(&mut self) -> u32 {
+    pub fn get_bits_available(&self) -> u32 {
         return self.num_bits - self.bits_written;
     }
 

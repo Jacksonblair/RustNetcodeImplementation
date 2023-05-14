@@ -32,3 +32,14 @@ pub fn calc_packet_crc32(buffer: &Buffer, protocol_id: u32) -> u32 {
     crc_bytes.extend_from_slice(buffer);
     return crc32fast::hash(&crc_bytes);
 }
+
+/** TODO */
+pub fn print_word(bytes: &Vec<u8>, idx: usize) {
+    println!(
+        "BUFFER: {:#010b} {:#010b} {:#010b} {:#010b}",
+        bytes[idx],
+        bytes[idx + 1],
+        bytes[idx + 2],
+        bytes[idx + 3]
+    );
+}

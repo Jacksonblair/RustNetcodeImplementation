@@ -1,9 +1,23 @@
 use rand::Rng;
 
+/*
+   SENDING:
+   - Get packet, split into fragment packets if needed.
+   - Send fragment packets one at a time.
+
+   RECEIVING:
+   - Get packet, check if fragment packet
+   - If fragment packet, join them back together.
+
+
+
+*/
+
 use crate::{
     impl_object_for_packet, packet_factory_methods,
     protocol::{
         constants::*,
+        helpers::calc_packet_crc32,
         packets::object::Object,
         packets::{
             fragment_packet::FragmentPacket, object::Packet, packet_buffer::PacketBuffer,
@@ -17,7 +31,12 @@ use crate::{
 
 const NUM_ITERATIONS: u32 = 10;
 
-/** Takes a buffer that needs to be split into multiple fragments, and splits it into the required number of PacketData instances */
+/**
+Takes a buffer larger than a single packets max since, and:
+- Splits into fragment size chunks
+- Serializes each fragment (adds data about the fragmentation to each packet)
+- Copies that serialized data back into the array passed into the function
+*/
 fn split_packet_into_fragments(
     sequence: u16,
     packet_data: &mut Buffer,
@@ -76,13 +95,10 @@ fn split_packet_into_fragments(
 
             // Serialize fragment packet into our packet data buffer.
             if !fragment_packet.serialize(&mut stream) {
-                // If serialize fails, do whatever this is for??
-                // *num_fragments = 0;
-                // for _ in 0..i {
-                //     // delete fragment_packets[i].data
-                //     fragment_packets[i as usize].size = 0;
-                //     // fragment_packets[i].data = null
-                // }
+                *num_fragments = 0;
+                for _ in 0..i {
+                    fragment_packets[i as usize].size = 0;
+                }
                 return false;
             };
 
@@ -92,15 +108,15 @@ fn split_packet_into_fragments(
 
         // -- Calc crc32 and add into packet data
         // TODO: host_to_network(protocolID) ??
-        // let fragment_packets_data_ptr = &fragment_packets[i as usize].data;
-        // let crc32 = calc_packet_crc32(fragment_packets_data_ptr, PROTOCOL_ID);
-        // unsafe {
-        //     std::ptr::copy_nonoverlapping(
-        //         crc32.to_le_bytes().as_ptr(),
-        //         fragment_packet.fragment_data.as_mut_ptr(),
-        //         4,
-        //     );
-        // }
+        let fragment_packets_data_ptr = &fragment_packets[i as usize].data;
+        let crc32 = calc_packet_crc32(fragment_packets_data_ptr, PROTOCOL_ID);
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                crc32.to_le_bytes().as_ptr(),
+                fragment_packets[i].data.as_mut_ptr(),
+                4,
+            );
+        }
 
         println!("Fragment packet {:?}: {:?} bytes", i, bytes_processed);
         fragment_packets[i as usize].size = bytes_processed;
@@ -114,7 +130,6 @@ fn split_packet_into_fragments(
     return true;
 }
 
-impl_object_for_packet!(FragmentPacket);
 enum TestPacketTypes {
     FRAGMENT = 0,
     A = 1,
@@ -202,7 +217,6 @@ impl_object_for_packet!(TestPacketHeader);
 #[test]
 pub fn test() {
     let mut packet_buffer = PacketBuffer::new();
-
     let packet_factory = TestPacketFactory::new();
     let sequence: u16 = 0;
 
@@ -241,9 +255,6 @@ pub fn test() {
             error = true;
         }
 
-        // Split data into fragments.
-        // Send each fragment.
-
         if bytes_written > MAX_FRAGMENT_SIZE as u32 {
             let mut num_fragments: u32 = 0;
 
@@ -262,14 +273,17 @@ pub fn test() {
                 &mut fragment_packets,
             );
 
-            // Process packet data
+            // ... sending across the network ...
+
+            // Process the fragment packets
             for j in 0..num_fragments as usize {
-                let size = fragment_packets[j].size;
-                packet_buffer.process_packet(&mut fragment_packets[j].data, size);
+                let fragment_size = fragment_packets[j].size;
+                packet_buffer.process_packet(&mut fragment_packets[j].data, fragment_size);
             }
         } else {
-            // Process the buffer for a single packet.
-            println!("Sending packet {:?} as a  regular packet", sequence);
+            println!("Sending packet {:?} as a regular packet", sequence);
+            // ... sending across the network ...
+            // Process the fragment packet
             packet_buffer.process_packet(&mut buffer, bytes_written);
         }
     }

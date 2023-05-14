@@ -438,6 +438,7 @@ mod tests {
     use super::*;
     use crate::{
         impl_object_for_packet,
+        protocol::packets::object::Object,
         protocol::streams::{read_stream::ReadStream, write_stream::WriteStream},
     };
 

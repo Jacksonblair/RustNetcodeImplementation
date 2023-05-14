@@ -1,4 +1,4 @@
-use crate::protocol::{constants::*, streams::read_stream::ReadStream};
+use crate::protocol::{constants::*, helpers::calc_packet_crc32, streams::read_stream::ReadStream};
 
 use super::fragment_packet::FragmentPacket;
 
@@ -10,6 +10,7 @@ pub struct PacketBufferEntry<'a> {
     fragment_data: &'a mut Vec<u8>, // pointer to data for fragment n
 }
 
+/** PacketBuffer is used to process packets as a RECEIVER */
 pub struct PacketBuffer<'a> {
     pub current_sequence: u16, // sequence number of most recent packet in buffer
     pub num_buffered_fragments: u32, // total number of fragments stored in the packet buffer (across *all* packets)
@@ -28,7 +29,7 @@ impl PacketBuffer<'_> {
     }
 
     /**
-        Process packet fragment on receiver side.
+        Process packet fragment
 
         - Stores each fragment ready to receive the whole packet once all fragments for that packet are received.
         - If any fragment is dropped, fragments are not resent, the whole packet is dropped.
@@ -138,10 +139,8 @@ impl PacketBuffer<'_> {
     */
     fn advance(&mut self) {}
 
-    /** Process packet data into a fragment */
+    /** Method for processing a RECEIVED packet */
     pub fn process_packet(&mut self, data: &mut Buffer, size: u32) -> bool {
-        // Readstream to read from packet buffer into a fragment packet
-        // NOTE: We always use a fragment packet to wrap packets, even if its not a fragment.
         let mut stream = ReadStream::new(data, size as usize);
         let mut fragment_packet = FragmentPacket::new();
 
@@ -159,21 +158,20 @@ impl PacketBuffer<'_> {
             crc32 = protocol2::calculate_crc32( data + 4, size - 4, crc32 );
         */
 
-        // let protocol_id: u32 = PROTOCOL_ID as u32;
-        // let crc32 = calc_packet_crc32(data, protocol_id);
+        let crc32 = calc_packet_crc32(data, PROTOCOL_ID);
 
-        // if crc32 != fragment_packet.crc32 {
-        //     println!(
-        //         "Corrupt packet: Expected crc32 {:?}, got {:?}",
-        //         crc32, fragment_packet.crc32
-        //     );
-        // }
+        if crc32 != fragment_packet.crc32 {
+            println!(
+                "Corrupt packet: Expected crc32 {:?}, got {:?}",
+                crc32, fragment_packet.crc32
+            );
+        }
 
-        // if fragment_packet.packet_type == 0 {
-        //     // return ProcessFragment( data + PacketFragmentHeaderBytes, fragmentPacket.fragmentSize, fragmentPacket.sequence, fragmentPacket.fragmentId, fragmentPacket.numFragments );
-        // } else {
-        //     // return ProcessFragment( data, size, fragmentPacket.sequence, 0, 1 );
-        // }
+        if fragment_packet.packet_type == 0 {
+            // return ProcessFragment( data + PacketFragmentHeaderBytes, fragmentPacket.fragmentSize, fragmentPacket.sequence, fragmentPacket.fragmentId, fragmentPacket.numFragments );
+        } else {
+            // return ProcessFragment( data, size, fragmentPacket.sequence, 0, 1 );
+        }
 
         true
     }

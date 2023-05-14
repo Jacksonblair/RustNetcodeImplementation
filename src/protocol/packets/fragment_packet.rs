@@ -1,9 +1,18 @@
-use crate::protocol::{constants::*, serialization::*, streams::*};
+use crate::{
+    impl_object_for_packet,
+    protocol::{
+        constants::*,
+        serialization::*,
+        streams::{read_stream::ReadStream, write_stream::WriteStream, Stream},
+    },
+};
+
+use super::object::Object;
+use super::object::Packet;
 
 // fragment packet on-the-wire format:
 // [crc32] (32 bits) | [sequence] (16 bits) | [packet type 0] (# of bits depends on number of packet types)
 // [fragment id] (8 bits) | [num fragments] (8 bits) | (pad zero bits to nearest byte) | <fragment data>
-#[derive(Debug)]
 pub struct FragmentPacket {
     // input/output
     pub fragment_size: u32, // set as input on serialize write. output on serialize read (inferred from size of packet)
@@ -51,8 +60,8 @@ impl FragmentPacket {
         serialize_align_macro(stream);
 
         if stream.is_reading() {
-            // assert!((stream.get_bits_remaining() % 8) == 0)
-            // self.fragment_size = stream.get_bits_remaining() / 8;
+            assert!(stream.get_bits_remaining() % 8 == 0);
+            self.fragment_size = stream.get_bits_remaining() / 8;
             if self.fragment_size <= 0 || self.fragment_size > MAX_FRAGMENT_SIZE as u32 {
                 println!(
                     "Packet fragment size is out of bounds ({:?})",
@@ -69,3 +78,11 @@ impl FragmentPacket {
         true
     }
 }
+
+impl Packet for FragmentPacket {
+    fn get_packet_type(&self) -> u32 {
+        PacketTypes::FRAGMENT as u32
+    }
+}
+
+impl_object_for_packet!(FragmentPacket);

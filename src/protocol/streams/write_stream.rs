@@ -89,7 +89,15 @@ impl<'a> Stream for WriteStream<'a> {
         true
     }
 
-    fn get_bytes_processed(&mut self) -> u32 {
+    fn get_bytes_processed(&self) -> u32 {
         return self.writer.get_bytes_written();
+    }
+
+    fn get_bits_processed(&self) -> u32 {
+        return self.writer.get_bits_written();
+    }
+
+    fn get_bits_remaining(&self) -> u32 {
+        return self.writer.get_total_bytes() * 8 - self.get_bits_processed();
     }
 }

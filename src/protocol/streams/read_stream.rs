@@ -65,7 +65,6 @@ impl<'a> Stream for ReadStream<'a> {
 
     fn serialize_bytes(&mut self, bytes: &mut Vec<u8>, num_bytes: u32) -> bool {
         assert!(self.serialize_align());
-        assert!(bytes.len() == num_bytes as usize);
 
         if self.reader.would_read_past_end(num_bytes * 8) {
             self.error = ProtocolError::StreamOverflow;
@@ -108,7 +107,15 @@ impl<'a> Stream for ReadStream<'a> {
         true
     }
 
-    fn get_bytes_processed(&mut self) -> u32 {
+    fn get_bytes_processed(&self) -> u32 {
         return (self.reader.num_bits_read + 7) / 8;
+    }
+
+    fn get_bits_processed(&self) -> u32 {
+        return self.reader.get_bits_read();
+    }
+
+    fn get_bits_remaining(&self) -> u32 {
+        return self.reader.get_bits_remaining();
     }
 }
