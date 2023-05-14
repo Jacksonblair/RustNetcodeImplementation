@@ -1,20 +1,3 @@
-use super::streams::Stream;
-use std::num::Wrapping;
-
-// #define PROTOCOL2_DECLARE_VIRTUAL_SERIALIZE_FUNCTIONS()            \
-//     bool SerializeInternal(class protocol2::ReadStream &stream)    \
-//     {                                                              \
-//         return Serialize(stream);                                  \
-//     };                                                             \
-//     bool SerializeInternal(class protocol2::WriteStream &stream)   \
-//     {                                                              \
-//         return Serialize(stream);                                  \
-//     };                                                             \
-//     bool SerializeInternal(class protocol2::MeasureStream &stream) \
-//     {                                                              \
-//         return Serialize(stream);                                  \
-//     };
-
 #[macro_export]
 macro_rules! impl_object_for_packet {
     ($t:ident) => {

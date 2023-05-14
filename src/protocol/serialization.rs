@@ -1,10 +1,7 @@
-use num_traits::clamp;
-use rand::Rng;
-use vector3d::Vector3d;
-
+use super::{packets::object::Object, streams::Stream};
 use crate::bits_required;
-
-use super::{packets::Object, streams::Stream};
+use num_traits::clamp;
+use vector3d::Vector3d;
 
 pub const MAX_OBJECTS: u32 = 1024;
 
@@ -441,7 +438,7 @@ mod tests {
     use super::*;
     use crate::{
         impl_object_for_packet,
-        protocol::streams::{ReadStream, WriteStream},
+        protocol::streams::{read_stream::ReadStream, write_stream::WriteStream},
     };
 
     #[derive(PartialEq, Debug)]

@@ -1,82 +1,21 @@
 use std::slice::from_raw_parts;
 
-use crate::protocol::ProtocolError;
+use crate::protocol::streams::read_stream::ReadStream;
+use crate::protocol::streams::write_stream::WriteStream;
+use crate::protocol::streams::Stream;
 
-use super::{
-    streams::{ReadStream, Stream, WriteStream},
-    Buffer,
-};
+use self::object::*;
+use self::packet_info::*;
 
-const PACKET_BUFFER_SIZE: u32 = 256;
-const MAX_FRAGMENT_SIZE: u32 = 1024;
-const MAX_FRAGMENTS_PER_PACKET: u32 = 256;
-pub const MAX_PACKET_SIZE: u32 = MAX_FRAGMENT_SIZE * MAX_FRAGMENTS_PER_PACKET;
+use super::constants::Buffer;
+use super::constants::ProtocolError;
 
-/*
-    -- Packet Fragmentation --
-
-    WRITING
-    - Create a big ass packet
-    - Write the packet
-    - Check if we've written more than we can fit into a single packet
-    - If true, split the packet into fragments and process them one by one
-    - Else just process the single packet
-
-    - !! READING !!
-    - Get our packets in a buffer
-    - COunt how many we have
-    - Iterate over all of the packets
-    - Read each packet, and do some safey tests.
-*/
-
-/** TODO */
-#[derive(Copy, Clone)]
-pub enum PacketTypes {
-    TestPacketA,
-}
-
-/**
- * Objects have a two serialize functions for reading and writing an object
- */
-pub trait Object {
-    // fn serialize(&mut self, stream: &mut dyn Stream) -> bool;
-    fn serialize_internal_r(&mut self, stream: &mut ReadStream) -> bool;
-    fn serialize_internal_w(&mut self, stream: &mut WriteStream) -> bool;
-}
-
-pub trait Packet: Object {
-    fn get_packet_type(&self) -> u32;
-}
-
-/** TODO */
-pub trait PacketFactory {
-    fn get_num_packet_types(&self) -> u32;
-    fn get_num_allocated_packets(&self) -> u32;
-    fn create_packet(&self, packet_type: u32) -> Box<dyn Packet>;
-    fn destroy_packet(&self);
-}
-
-/** TODO */
-pub struct PacketInfo<'a> {
-    pub raw_format: bool, // if true packets are written in "raw" format without crc32 (useful for encrypted packets).
-    pub prefix_bytes: u32, // prefix this number of bytes when reading and writing packets. stick your own data there.
-    pub protocol_id: u32, // protocol id that distinguishes your protocol from other packets sent over UDP.
-    pub allowed_packet_types: Vec<u32>, // array of allowed packet types. if a packet type is not allowed the serialize read or write will fail.
-    pub packet_factory: &'a dyn PacketFactory, // create packets and determine information about packet types. required.
-                                               // context: Something??                 // context for the packet serialization (optional, pass in NULL)
-}
-
-impl PacketInfo<'_> {
-    pub fn new(packet_factory: &dyn PacketFactory) -> PacketInfo {
-        return PacketInfo {
-            raw_format: false,
-            prefix_bytes: 0,
-            protocol_id: 0,
-            allowed_packet_types: vec![],
-            packet_factory,
-        };
-    }
-}
+pub mod fragment_packet;
+pub mod object;
+pub mod packet_buffer;
+pub mod packet_data;
+pub mod packet_factory;
+pub mod packet_info;
 
 /** TODO */
 pub fn write_packet(
@@ -276,5 +215,3 @@ pub fn read_packet(
 
     return Some(packet);
 }
-
-mod tests {}

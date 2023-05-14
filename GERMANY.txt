@@ -1,0 +1,80 @@
+Splitting up a packet:
+
+- We add a sequence to each packet now
+
+Our fragmentation layer just wraps around normal packets, with minimal overhead
+
+- We add a '0' to our packet types enum, which represents a fragment.
+
+Now for fragment packets.. we also add...
+
+A fragment ID, and the number of fragments, both of which are 8 bits.
+
+we INFER THE FRAGMENT SIZE by pulling off all the shit before the actual data starts, so crc32, seq, packet type, etc... And we're left with the actual size of fragment data. 
+
+Add all the bits to EACH chunk of the packet...
+
+
+
+
+So we split into chunks. We write a Fragment Packet for each chunk. Then we serialize each Fragment Packet into a buffer.
+
+Then we take those buffers, and process them as packets. Which involves...
+
+- Creating a new Fragment Packet... the data for which si read read from our packet buffers that we just wrote into...
+
+... So why are we writing these fragment packets twice?
+
+
+Well after we write the fragment packet AGAIN...
+
+SO WE DO IT TWICE BECAUSE...
+
+The Process_packet method handles both fragment packets and non-fragment packets. If we pass a normal packet to it, 
+
+
+
+
+IF I WERE TO WRITE THIS...
+
+I would write my packet into a buffer
+Split the packet data into fragment-sized chunks
+Record info about the fragments (how many, etc)...
+
+Then i would take each chunk, and create a packet for it, with some fragment specific stuff attached.
+
+Then i would send that shit.
+
+
+
+
+TODO: 
+- Clean dishes
+- Go shopping
+
+
+- Dachau conc camp
+- oktoberfest
+- bavaria
+- heidelberg
+- the rhine
+- munich
+- hokkenheim ??
+- museum in munich 
+- bruna pass
+- castles neuschwanstein, bavaria leudwig castle, white ceramic swan ... ... ... ... 
+
+
+- heidelberg boot (twist left)
+- heidelberg castle
+- hohenzollern castle
+
+
+ 
+
+
+
+
+
+
+
